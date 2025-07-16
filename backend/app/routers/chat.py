@@ -69,6 +69,8 @@ async def chat_endpoint(request: Request, settings: Settings = Depends(get_setti
         ]
 
         llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.2,
             streaming=True,
             callbacks=[cb],
             openai_api_key=settings.openai_api_key,
