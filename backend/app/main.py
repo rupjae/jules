@@ -2,15 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from typing import AsyncGenerator
-from uuid import uuid4
-
 from fastapi import Depends, HTTPException, Request, status
-from langchain.schema import HumanMessage, SystemMessage
-from sse_starlette.sse import EventSourceResponse
 
 from .config import Settings, get_settings
-from .graphs.main_graph import graph
+
+# Routers
+from .routers import chat as chat_router
 
 
 app = FastAPI(title="Jules API", version="0.1.0")
@@ -25,7 +22,10 @@ app.add_middleware(
 )
 
 # Mount built frontend (static export) at root
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# NOTE: static mount must come *after* API routers so it doesn't shadow them.
+
+# Register application routers
+app.include_router(chat_router.router)
 
 
 @app.get("/health")
@@ -48,38 +48,14 @@ async def _authorize(
         )
 
 
-@app.get("/api/chat")
-async def chat_endpoint(
-    request: Request, settings: Settings = Depends(get_settings)
-):  # noqa: D401
-    """Stream chat completions via SSE using per-thread memory."""
-
-    await _authorize(request, settings)
-
-    prompt: str = request.query_params.get("message", "")
-    if not prompt:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Message is required",
-        )
-
-    thread_id = request.headers.get("X-Thread-ID") or str(uuid4())
-
-    async def generator() -> AsyncGenerator[str, None]:
-        state = {
-            "messages": [
-                SystemMessage(content="You are Jules, a helpful AI assistant."),
-                HumanMessage(content=prompt),
-            ]
-        }
-
-        async for step in graph.astream(
-            state, {"configurable": {"thread_id": thread_id}}
-        ):
-            messages = step.get("llm", {}).get("messages")
-            if messages:
-                for ch in messages[-1].content:
-                    yield ch
-        yield "__END__"
-
-    return EventSourceResponse(generator())
+# ---------------------------------------------------------------------------
+# NOTE:
+# The memory-aware chat endpoint previously lived here. It has been migrated to
+# backend/app/routers/chat.py so we can keep all API routes in a single module
+# and avoid accidental duplicates. The implementation in the router still
+# relies on the same LangGraph graph object and continues to support per-thread
+# memory.  This stub remains only to preserve the module-level helpers above.
+# ---------------------------------------------------------------------------
+# Mount built frontend (static export) *after* all API routes so paths like
+# "/api/chat" are correctly resolved before the catch-all static files route.
+app.mount("/", StaticFiles(directory="static", html=True), name="static")

@@ -1,31 +1,22 @@
-"""Chat router for Jules.
+"""Chat router exposing the memory-aware LangGraph endpoint.
 
-Provides a `/chat` endpoint that streams tokens via Server-Sent Events (SSE).
+The router is mounted with prefix "/api" so the final path is /api/chat.
+It streams tokens via Server-Sent Events (SSE) and keeps per-thread
+conversation context using the configured LangGraph checkpoint saver.
 """
 
-import asyncio
+from __future__ import annotations
+
 from typing import AsyncGenerator, List
+import asyncio
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from langchain.callbacks.base import AsyncCallbackHandler
-from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
 from sse_starlette.sse import EventSourceResponse
 
 from ..config import Settings, get_settings
-
-
-class SSECallbackHandler(AsyncCallbackHandler):
-    """Captures streamed tokens and yields them through an async queue."""
-
-    def __init__(self) -> None:
-        self.queue: asyncio.Queue[str] = asyncio.Queue()
-
-    async def on_llm_new_token(self, token: str, **kwargs):  # type: ignore[override]
-        await self.queue.put(token)
-
-    async def done(self) -> None:
-        await self.queue.put("__END__")
+from ..graphs.main_graph import graph
 
 
 router = APIRouter(prefix="/api")
@@ -34,10 +25,10 @@ router = APIRouter(prefix="/api")
 async def _authorize(
     request: Request, settings: Settings = Depends(get_settings)
 ) -> None:
-    """Simple bearer-token check if JULES_AUTH_TOKEN is configured."""
+    """Bearer-token guard. Disabled when JULES_AUTH_TOKEN is unset."""
 
     if settings.auth_token is None:
-        return  # auth disabled
+        return
 
     auth_header = request.headers.get("Authorization", "")
     scheme, _, token = auth_header.partition(" ")
@@ -52,53 +43,45 @@ async def _authorize(
 async def chat_endpoint(
     request: Request, settings: Settings = Depends(get_settings)
 ):  # noqa: D401
-    """Stream chat completions via SSE.
-
-    Expects JSON body: { "message": "Hello Jules" }
-    """
+    """Stream chat completions via SSE with thread-scoped memory."""
 
     await _authorize(request, settings)
 
     prompt: str = request.query_params.get("message", "")
-
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Message is required",
         )
 
-    # Async queue & callback for streaming tokens
-    cb = SSECallbackHandler()
+    # Use header-supplied thread id or create one.
+    thread_id = request.headers.get("X-Thread-ID") or str(uuid4())
 
     async def generator() -> AsyncGenerator[str, None]:
-        # Build conversation
-        messages: List = [
-            SystemMessage(content="You are Jules, a helpful AI assistant."),
-            HumanMessage(content=prompt),
-        ]
+        """Run the (blocking) graph in a background thread and stream tokens."""
 
-        llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.2,
-            streaming=True,
-            callbacks=[cb],
-            openai_api_key=settings.openai_api_key,
-        )
+        state = {
+            "messages": [
+                SystemMessage(content="You are Jules, a helpful AI assistant."),
+                HumanMessage(content=prompt),
+            ]
+        }
 
-        # Run model concurrently so we can stream tokens
-        async def _run_llm():
-            await llm.agenerate([messages])
-            await cb.done()
+        loop = asyncio.get_running_loop()
 
-        task = asyncio.create_task(_run_llm())
+        def _run_sync() -> List[str]:
+            """Execute graph.stream and collect the assistant's latest message."""
+            latest_tokens: List[str] = []
+            for step in graph.stream(state, {"configurable": {"thread_id": thread_id}}):
+                messages: List | None = step.get("llm", {}).get("messages")
+                if messages:
+                    latest_tokens = list(messages[-1].content)
+            return latest_tokens
 
-        try:
-            while True:
-                token = await cb.queue.get()
-                if token == "__END__":
-                    break
-                yield token
-        finally:
-            task.cancel()
+        # Run the blocking graph in default executor
+        tokens: List[str] = await loop.run_in_executor(None, _run_sync)
+        for ch in tokens:
+            yield ch
 
-    return EventSourceResponse(generator())
+    # Attach the (possibly freshly generated) thread id so clients can persist it.
+    return EventSourceResponse(generator(), headers={"X-Thread-ID": thread_id})

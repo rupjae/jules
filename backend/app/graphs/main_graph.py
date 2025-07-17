@@ -1,10 +1,42 @@
-"""Application LangGraph setup."""
+"""Application LangGraph setup.
 
+This module tries to use the *new* ``langchain-openai`` distribution first and
+falls back to the deprecated import from ``langchain_community`` when the
+package is not available in the runtime environment.  The conditional import
+removes the deprecation warning once projects migrate, while keeping the code
+working today without adding a hard dependency.
+"""
 from __future__ import annotations
 
 from typing import Annotated, List
 
-from langchain_community.chat_models import ChatOpenAI
+
+# ---------------------------------------------------------------------------
+# ChatOpenAI conditional import
+# ---------------------------------------------------------------------------
+
+try:  # Prefer the new, dedicated distribution.
+    from langchain_openai import ChatOpenAI  # type: ignore
+except ModuleNotFoundError:  # Fallback options
+    try:
+        from langchain_community.chat_models import ChatOpenAI  # type: ignore  # noqa: F401
+    except ModuleNotFoundError:  # Last-ditch stub – keeps package importable in dev envs
+        class ChatOpenAI:  # type: ignore
+            """Stub that surfaces a helpful error if instantiated without deps."""
+
+            def __init__(self, *_: object, **__: object) -> None:  # noqa: D401
+                raise ImportError(
+                    "Install either 'langchain-openai' or 'langchain-community' to use ChatOpenAI."
+                )
+
+    # Expose "langchain_openai.ChatOpenAI" even when we fell back so external
+    # imports and monkey-patches remain functional.
+    import sys, types
+
+    module = types.ModuleType("langchain_openai")
+    module.ChatOpenAI = ChatOpenAI  # type: ignore[attr-defined]
+    sys.modules.setdefault("langchain_openai", module)
+
 from langchain.schema import AIMessage, BaseMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph

@@ -45,7 +45,9 @@ uvicorn app.main:app --reload --port 8000
 The `./data` directory holds `checkpoints.sqlite` and `jules_memory.sqlite`.
 
 Then open http://localhost:8000 to chat with **Jules**.
-Clients must pass an `X-Thread-ID` header to resume a conversation.
+The backend will return the generated `X-Thread-ID` header on the very first
+request so that clients can persist it; simply include the same header in all
+subsequent calls to continue the same conversation thread.
 
 ## Docker (single image)
 
