@@ -1,4 +1,4 @@
-fastapi==0.110.0
+fastapi==0.116.1
 uvicorn[standard]==0.29.0
 python-dotenv==1.0.1
 langchain-core>=0.3.66
@@ -8,6 +8,7 @@ langgraph==0.5.3
 langchain-community==0.3.27
 chromadb==0.4.24
 sse-starlette==1.6.1
-aiohttp==3.9.5
+aiohttp==3.10.11
 pydantic-settings==2.10.1
 langgraph-checkpoint-sqlite==2.0.10
+starlette==0.40.0
