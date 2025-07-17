@@ -42,11 +42,16 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+The `./data` directory holds `checkpoints.sqlite` and `jules_memory.sqlite`.
+
 Then open http://localhost:8000 to chat with **Jules**.
+Clients must pass an `X-Thread-ID` header to resume a conversation.
 
 ## Docker (single image)
 
 ```bash
+# Create persistent directory for SQLite files
+mkdir -p data
 # Build (first time) and start all services: backend + Next.js dev server
 docker compose up --build
 ```

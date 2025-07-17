@@ -4,12 +4,12 @@ Provides a `/chat` endpoint that streams tokens via Server-Sent Events (SSE).
 """
 
 import asyncio
-from typing import AsyncGenerator, Dict, List
+from typing import AsyncGenerator, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langchain.callbacks.base import AsyncCallbackHandler
 from langchain_community.chat_models import ChatOpenAI
-from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from langchain.schema import HumanMessage, SystemMessage
 from sse_starlette.sse import EventSourceResponse
 
 from ..config import Settings, get_settings
@@ -31,7 +31,9 @@ class SSECallbackHandler(AsyncCallbackHandler):
 router = APIRouter(prefix="/api")
 
 
-async def _authorize(request: Request, settings: Settings = Depends(get_settings)) -> None:
+async def _authorize(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> None:
     """Simple bearer-token check if JULES_AUTH_TOKEN is configured."""
 
     if settings.auth_token is None:
@@ -41,11 +43,15 @@ async def _authorize(request: Request, settings: Settings = Depends(get_settings
     scheme, _, token = auth_header.partition(" ")
 
     if scheme.lower() != "bearer" or token != settings.auth_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
+        )
 
 
 @router.get("/chat")
-async def chat_endpoint(request: Request, settings: Settings = Depends(get_settings)):  # noqa: D401
+async def chat_endpoint(
+    request: Request, settings: Settings = Depends(get_settings)
+):  # noqa: D401
     """Stream chat completions via SSE.
 
     Expects JSON body: { "message": "Hello Jules" }
@@ -56,7 +62,10 @@ async def chat_endpoint(request: Request, settings: Settings = Depends(get_setti
     prompt: str = request.query_params.get("message", "")
 
     if not prompt:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Message is required")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Message is required",
+        )
 
     # Async queue & callback for streaming tokens
     cb = SSECallbackHandler()

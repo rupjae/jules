@@ -1,0 +1,54 @@
+"""Application LangGraph setup."""
+
+from __future__ import annotations
+
+from typing import Annotated, List
+
+from langchain_community.chat_models import ChatOpenAI
+from langchain.schema import AIMessage, BaseMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.graph import END, StateGraph
+from langchain_core.runnables import RunnableConfig
+from typing_extensions import TypedDict
+
+from ..config import get_settings
+from ..memory import checkpointer
+
+
+settings = get_settings()
+
+
+def _merge_messages(
+    existing: List[BaseMessage], new: List[BaseMessage] | None
+) -> List[BaseMessage]:
+    """Reducer that appends new messages to history."""
+    return existing + (new or [])
+
+
+class GraphState(TypedDict):
+    """State shared across graph nodes."""
+
+    messages: Annotated[List[BaseMessage], _merge_messages]
+
+
+def _llm_node(state: GraphState, config: RunnableConfig | None = None) -> GraphState:
+    """Generate assistant reply using the configured LLM."""
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.2,
+        openai_api_key=settings.openai_api_key,
+    )
+    ai_msg: AIMessage = llm.invoke(state["messages"])
+    return {"messages": [ai_msg]}
+
+
+def build_graph(checkpointer: BaseCheckpointSaver) -> StateGraph[GraphState]:
+    """Construct the conversation graph."""
+    sg: StateGraph[GraphState] = StateGraph(GraphState)
+    sg.add_node("llm", _llm_node)
+    sg.set_entry_point("llm")
+    sg.add_edge("llm", END)
+    return sg.compile(checkpointer=checkpointer)
+
+
+graph = build_graph(checkpointer)
