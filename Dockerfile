@@ -40,6 +40,8 @@ RUN pip install -r requirements.txt
 
 # Copy backend code
 COPY backend/app ./app
+# memory helper (thread checkpointer) lives at repo root
+COPY backend/memory.py ./memory.py
 
 # Copy exported static site from the previous stage
 COPY --from=frontend-builder /workspace/frontend/out ./static

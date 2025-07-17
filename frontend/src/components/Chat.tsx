@@ -13,8 +13,27 @@ interface Message {
   content: string;
 }
 
-// When served from the same origin, no absolute URL is needed
-const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
+// ---------------------------------------------------------------------------
+// Backend base URL resolution
+// ---------------------------------------------------------------------------
+// In production the frontend and backend are usually served from the same
+// origin (e.g., behind one reverse proxy) so we default to *relative* paths.
+// During local development however `next dev` runs on :3000 while the FastAPI
+// server sits on :8000.  Falling back to an empty string therefore breaks the
+// connection – requests are sent to the *frontend* origin which naturally
+// returns a 404.  We fix the issue by detecting the common dev setup and
+// defaulting to "http://localhost:8000" when NEXT_PUBLIC_BACKEND_URL is left
+// undefined.
+
+let backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+if (!backendUrl) {
+  // Heuristic: if the page was loaded from localhost:3000 assume FastAPI on 8000
+  if (typeof window !== 'undefined' && window.location.port === '3000') {
+    backendUrl = 'http://localhost:8000';
+  } else {
+    backendUrl = '';
+  }
+}
 
 export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);

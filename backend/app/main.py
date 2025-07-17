@@ -5,7 +5,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Depends, HTTPException, Request, status
 
 from .config import Settings, get_settings
-from ..memory import get_checkpointer
+# `memory.py` lives at project root.  Use absolute import so it works regardless
+# of where the `app` package is located on the import path (Docker image copies
+# only the *app* folder, not the whole backend tree).
+
+from .memory import get_checkpointer
 from .graphs.main_graph import build_graph
 
 # Routers
