@@ -8,11 +8,11 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import AIMessage, BaseMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph
-from langgraph.runnable import RunnableConfig
+from langchain_core.runnables import RunnableConfig
 from typing_extensions import TypedDict
 
 from ..config import get_settings
-from ..memory import get_checkpointer
+from ..memory import checkpointer
 
 
 settings = get_settings()
@@ -31,7 +31,7 @@ class GraphState(TypedDict):
     messages: Annotated[List[BaseMessage], _merge_messages]
 
 
-def _llm_node(state: GraphState, _: RunnableConfig) -> GraphState:
+def _llm_node(state: GraphState, config: RunnableConfig | None = None) -> GraphState:
     """Generate assistant reply using the configured LLM."""
     llm = ChatOpenAI(
         model="gpt-4o-mini",
@@ -51,4 +51,4 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> StateGraph[GraphState]:
     return sg.compile(checkpointer=checkpointer)
 
 
-graph = build_graph(get_checkpointer())
+graph = build_graph(checkpointer)

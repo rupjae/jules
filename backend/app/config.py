@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     # Basic auth token for protecting the chat endpoint.
     # Send `Authorization: Bearer <token>`.
     auth_token: Optional[str] = Field(None, env="JULES_AUTH_TOKEN")
-    postgres_uri: str = Field(..., env="POSTGRES_URI")
 
     class Config:
         case_sensitive = False

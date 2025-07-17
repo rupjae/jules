@@ -1,18 +1,13 @@
-"""Postgres-based graph checkpointing helpers."""
+"""SQLite-based graph checkpointing helpers."""
 
 from __future__ import annotations
 
-from functools import lru_cache
-
-from langgraph.checkpoint.postgres import PostgresSaver
-
-from .config import get_settings
+from pathlib import Path
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 
-@lru_cache
-def get_checkpointer() -> PostgresSaver:
-    """Return a configured PostgresSaver and ensure tables exist."""
-    saver_cm = PostgresSaver.from_conn_string(get_settings().postgres_uri)
-    saver = saver_cm.__enter__()
-    saver.setup()
-    return saver
+saver_path = Path("/app/data/checkpoints.sqlite")
+saver_path.parent.mkdir(parents=True, exist_ok=True)
+saver_cm = SqliteSaver.from_conn_string(str(saver_path))
+checkpointer = saver_cm.__enter__()
+checkpointer.setup()

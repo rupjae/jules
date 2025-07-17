@@ -1,12 +1,12 @@
 fastapi==0.110.0
 uvicorn[standard]==0.29.0
 python-dotenv==1.0.1
-langchain==0.1.20
-langchain-openai==0.1.7
-langgraph==0.0.46
+langchain==0.3.26
+langchain-openai==0.3.28
+langgraph==0.5.3
+langchain-community==0.3.27
 chromadb==0.4.24
 sse-starlette==1.6.1
 aiohttp==3.9.5
 pydantic-settings==2.2.1
-langgraph-checkpoint-postgres==2.0.23
-psycopg[binary,pool]==3.2.9
+langgraph-checkpoint-sqlite==2.0.10
