@@ -50,6 +50,8 @@ Clients must pass an `X-Thread-ID` header to resume a conversation.
 ## Docker (single image)
 
 ```bash
+# Create persistent directory for SQLite files
+mkdir -p data
 # Build (first time) and start all services: backend + Next.js dev server
 docker compose up --build
 ```
