@@ -42,7 +42,8 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-The `./data` directory holds `checkpoints.sqlite` and `jules_memory.sqlite`.
+Conversation memory is stored in-process using a singleton MemorySaver, so it
+persists only while the server is running.
 
 Then open http://localhost:8000 to chat with **Jules**.
 The backend will return the generated `X-Thread-ID` header on the very first
@@ -52,9 +53,6 @@ subsequent calls to continue the same conversation thread.
 ## Docker (single image)
 
 ```bash
-# Create persistent directory for SQLite files
-mkdir -p data
-# Build (first time) and start all services: backend + Next.js dev server
 docker compose up --build
 ```
 

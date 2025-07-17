@@ -29,7 +29,6 @@ def test_memory_regression(monkeypatch) -> None:
             joined = " ".join(m.content for m in messages)
             return AIMessage(content=joined)
 
-    monkeypatch.setenv("USE_IN_MEMORY", "1")
     monkeypatch.setattr(main_graph, "ChatOpenAI", FakeLLM)
     main_graph.graph = main_graph.build_graph()
 

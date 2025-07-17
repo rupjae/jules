@@ -14,7 +14,6 @@ def test_threads(monkeypatch) -> None:
         def invoke(self, messages):
             return AIMessage(content="pong")
 
-    monkeypatch.setenv("USE_IN_MEMORY", "1")
     monkeypatch.setattr(main_graph, "ChatOpenAI", FakeLLM)
 
     main_graph.graph = main_graph.build_graph()
