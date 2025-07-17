@@ -32,7 +32,7 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
 
 ## Quick start (development)
 
-1. Copy `.env.example` → `.env` and add your `OPENAI_API_KEY`.
+1. Copy `.env.example` → `.env` and add your `OPENAI_API_KEY` and `POSTGRES_URI` (e.g. `postgresql://postgres:postgres@localhost:5432/postgres`).
 2. Install Python deps & run backend:
 
 ```bash
@@ -43,6 +43,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Then open http://localhost:8000 to chat with **Jules**.
+Clients must pass an `X-Thread-ID` header to resume a conversation.
 
 ## Docker (single image)
 
