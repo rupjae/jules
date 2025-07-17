@@ -12,11 +12,10 @@ import asyncio
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import HumanMessage
 from sse_starlette.sse import EventSourceResponse
 
 from ..config import Settings, get_settings
-from ..graphs.main_graph import graph
 
 
 router = APIRouter(prefix="/api")
@@ -57,15 +56,14 @@ async def chat_endpoint(
     # Use header-supplied thread id or create one.
     thread_id = request.headers.get("X-Thread-ID") or str(uuid4())
 
+    graph = request.app.state.graph
+    checkpointer = request.app.state.checkpointer
+
     async def generator() -> AsyncGenerator[str, None]:
         """Run the (blocking) graph in a background thread and stream tokens."""
 
-        state = {
-            "messages": [
-                SystemMessage(content="You are Jules, a helpful AI assistant."),
-                HumanMessage(content=prompt),
-            ]
-        }
+        state = checkpointer.get_latest_checkpoint(thread_id) or {"messages": []}
+        state["messages"].append(HumanMessage(content=prompt))
 
         loop = asyncio.get_running_loop()
 

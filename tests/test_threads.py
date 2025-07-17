@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 from langchain.schema import AIMessage, HumanMessage
-from langchain_community.chat_models import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
-
 from app.graphs import main_graph
 
 
 def test_threads(monkeypatch) -> None:
     """Graph should persist messages per thread."""
 
-    def fake_invoke(self, messages):
-        return AIMessage(content="pong")
+    class FakeLLM:
+        def __init__(self, *_: object, **__: object) -> None:
+            pass
 
-    monkeypatch.setattr(ChatOpenAI, "invoke", fake_invoke)
+        def invoke(self, messages):
+            return AIMessage(content="pong")
 
-    main_graph.graph = main_graph.build_graph(MemorySaver())
+    monkeypatch.setattr(main_graph, "ChatOpenAI", FakeLLM)
+
+    main_graph.graph = main_graph.build_graph()
 
     thread_id = "t1"
     out1 = main_graph.graph.invoke(

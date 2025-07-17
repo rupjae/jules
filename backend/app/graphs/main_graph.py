@@ -6,6 +6,7 @@ package is not available in the runtime environment.  The conditional import
 removes the deprecation warning once projects migrate, while keeping the code
 working today without adding a hard dependency.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, List
@@ -20,7 +21,10 @@ try:  # Prefer the new, dedicated distribution.
 except ModuleNotFoundError:  # Fallback options
     try:
         from langchain_community.chat_models import ChatOpenAI  # type: ignore  # noqa: F401
-    except ModuleNotFoundError:  # Last-ditch stub – keeps package importable in dev envs
+    except (
+        ModuleNotFoundError
+    ):  # Last-ditch stub – keeps package importable in dev envs
+
         class ChatOpenAI:  # type: ignore
             """Stub that surfaces a helpful error if instantiated without deps."""
 
@@ -31,20 +35,20 @@ except ModuleNotFoundError:  # Fallback options
 
     # Expose "langchain_openai.ChatOpenAI" even when we fell back so external
     # imports and monkey-patches remain functional.
-    import sys, types
+    import sys
+    import types
 
     module = types.ModuleType("langchain_openai")
     module.ChatOpenAI = ChatOpenAI  # type: ignore[attr-defined]
     sys.modules.setdefault("langchain_openai", module)
 
 from langchain.schema import AIMessage, BaseMessage
-from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph
 from langchain_core.runnables import RunnableConfig
 from typing_extensions import TypedDict
 
 from ..config import get_settings
-from ..memory import checkpointer
+from memory import get_checkpointer
 
 
 settings = get_settings()
@@ -74,8 +78,9 @@ def _llm_node(state: GraphState, config: RunnableConfig | None = None) -> GraphS
     return {"messages": [ai_msg]}
 
 
-def build_graph(checkpointer: BaseCheckpointSaver) -> StateGraph[GraphState]:
+def build_graph() -> StateGraph[GraphState]:
     """Construct the conversation graph."""
+    checkpointer = get_checkpointer()
     sg: StateGraph[GraphState] = StateGraph(GraphState)
     sg.add_node("llm", _llm_node)
     sg.set_entry_point("llm")
@@ -83,4 +88,4 @@ def build_graph(checkpointer: BaseCheckpointSaver) -> StateGraph[GraphState]:
     return sg.compile(checkpointer=checkpointer)
 
 
-graph = build_graph(checkpointer)
+graph = build_graph()
