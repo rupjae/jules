@@ -5,12 +5,21 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Depends, HTTPException, Request, status
 
 from .config import Settings, get_settings
+from ..memory import get_checkpointer
+from .graphs.main_graph import build_graph
 
 # Routers
 from .routers import chat as chat_router
 
 
 app = FastAPI(title="Jules API", version="0.1.0")
+
+
+@app.on_event("startup")
+async def _init_graph() -> None:
+    app.state.checkpointer = get_checkpointer()
+    app.state.graph = build_graph()
+
 
 # Allow frontend origin during development
 app.add_middleware(

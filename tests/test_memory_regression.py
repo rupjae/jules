@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import List
 
 from langchain.schema import AIMessage, HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
-
 from app.graphs import main_graph
 
 
@@ -31,8 +29,9 @@ def test_memory_regression(monkeypatch) -> None:
             joined = " ".join(m.content for m in messages)
             return AIMessage(content=joined)
 
+    monkeypatch.setenv("USE_IN_MEMORY", "1")
     monkeypatch.setattr(main_graph, "ChatOpenAI", FakeLLM)
-    main_graph.graph = main_graph.build_graph(MemorySaver())
+    main_graph.graph = main_graph.build_graph()
 
     tid = "t42"
     first = _collect_content("hi", tid)
