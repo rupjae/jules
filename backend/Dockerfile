@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend source
 COPY backend/app ./app
 # memory helper lives at project root
-COPY backend/memory.py ./memory.py
+# Copy checkpointer and compatibility shim for previous path
+# all backend code (FastAPI app and helpers)
 
 # Default env (can be overridden at runtime)
 ENV PYTHONUNBUFFERED=1 \

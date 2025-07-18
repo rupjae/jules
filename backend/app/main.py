@@ -9,7 +9,7 @@ from .config import Settings, get_settings
 # of where the `app` package is located on the import path (Docker image copies
 # only the *app* folder, not the whole backend tree).
 
-from .memory import get_checkpointer
+from .checkpointer import get_checkpointer
 from .graphs.main_graph import build_graph
 
 # Routers

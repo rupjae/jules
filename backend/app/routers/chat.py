@@ -57,26 +57,28 @@ async def chat_endpoint(
     thread_id = request.headers.get("X-Thread-ID") or str(uuid4())
 
     graph = request.app.state.graph
-    checkpointer = request.app.state.checkpointer
 
     async def generator() -> AsyncGenerator[str, None]:
-        """Run the (blocking) graph in a background thread and stream tokens."""
+        """Run the *blocking* graph.exec in a thread pool and stream tokens."""
 
-        state = checkpointer.get_latest_checkpoint(thread_id) or {"messages": []}
-        state["messages"].append(HumanMessage(content=prompt))
+        # Provide the **new** user message only.  LangGraph will automatically
+        # hydrate the previous conversation from the configured checkpointer
+        # (SQLite or in-memory) when a checkpoint for *thread_id* exists.  This
+        # avoids the earlier "checkpoint['v'] is None" migration bug.
+
+        user_state = {"messages": [HumanMessage(content=prompt)]}
 
         loop = asyncio.get_running_loop()
 
         def _run_sync() -> List[str]:
-            """Execute graph.stream and collect the assistant's latest message."""
             latest_tokens: List[str] = []
-            for step in graph.stream(state, {"configurable": {"thread_id": thread_id}}):
+            cfg = {"configurable": {"thread_id": thread_id}}
+            for step in graph.stream(user_state, cfg):
                 messages: List | None = step.get("llm", {}).get("messages")
                 if messages:
                     latest_tokens = list(messages[-1].content)
             return latest_tokens
 
-        # Run the blocking graph in default executor
         tokens: List[str] = await loop.run_in_executor(None, _run_sync)
         for ch in tokens:
             yield ch

@@ -12,3 +12,5 @@ aiohttp==3.10.11
 pydantic-settings==2.10.1
 starlette==0.40.0
 
+# Persistent checkpoint backend
+langgraph-checkpoint-sqlite>=1.0.3

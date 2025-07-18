@@ -96,7 +96,7 @@ except ModuleNotFoundError:
 from typing_extensions import TypedDict
 
 from ..config import get_settings
-from ..memory import get_checkpointer
+from ..checkpointer import get_checkpointer
 
 
 settings = get_settings()
