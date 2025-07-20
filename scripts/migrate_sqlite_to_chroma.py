@@ -1,4 +1,5 @@
 """Migrate legacy messages table into Chroma."""
+
 from __future__ import annotations
 
 import asyncio
@@ -15,7 +16,7 @@ async def _run(db: Path) -> None:
     cur.execute("SELECT thread_id, role, content FROM messages ORDER BY id")
     rows = cur.fetchall()
     for thread_id, role, content in rows:
-        await asyncio.to_thread(save_message, thread_id, role, content)
+        await save_message(thread_id, role, content)
         print(".", end="", flush=True)
     print(f"\nMigrated {len(rows)} rows.")
 

@@ -41,9 +41,13 @@ def _llm_node(state: GraphState, config: RunnableConfig | None = None) -> GraphS
     raw_msg: AIMessage = llm.invoke(state["messages"])
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     # preserve content and attach timestamp metadata
-    ai_msg = AIMessage(content=raw_msg.content,
-                       additional_kwargs={**getattr(raw_msg, 'additional_kwargs', {}),
-                                          'timestamp': now})
+    ai_msg = AIMessage(
+        content=raw_msg.content,
+        additional_kwargs={
+            **getattr(raw_msg, "additional_kwargs", {}),
+            "timestamp": now,
+        },
+    )
     return {"messages": [ai_msg]}
 
 

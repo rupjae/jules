@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import AsyncGenerator, List
 import asyncio
+import logging
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -16,9 +17,10 @@ from langchain.schema import HumanMessage
 from sse_starlette.sse import EventSourceResponse
 
 from db.chroma import save_message, search as chroma_search
-
 from ..config import Settings, get_settings
 import datetime
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api")
@@ -81,8 +83,11 @@ async def chat_endpoint(
 
         # include timestamp metadata on user message
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        user_state = {"messages": [HumanMessage(content=prompt,
-                                                 additional_kwargs={"timestamp": now})]}
+        user_state = {
+            "messages": [
+                HumanMessage(content=prompt, additional_kwargs={"timestamp": now})
+            ]
+        }
         await save_message(thread_id, "user", prompt)
 
         loop = asyncio.get_running_loop()
@@ -105,14 +110,14 @@ async def chat_endpoint(
     # Attach the (possibly freshly generated) thread id so clients can persist it.
     return EventSourceResponse(generator(), headers={"X-Thread-ID": thread_id})
 
+
 @router.get("/chat/history")
-async def chat_history(
-    request: Request, settings: Settings = Depends(get_settings)
-):
+async def chat_history(request: Request, settings: Settings = Depends(get_settings)):
     """Return the full message history for a given thread_id."""
     await _authorize(request, settings)
-    raw_id = (request.headers.get(THREAD_ID_HEADER)
-              or request.query_params.get("thread_id"))
+    raw_id = request.headers.get(THREAD_ID_HEADER) or request.query_params.get(
+        "thread_id"
+    )
     if raw_id is None:
         raise HTTPException(status_code=400, detail="thread_id is required")
     try:
@@ -130,23 +135,24 @@ async def chat_history(
             cp = tup.checkpoint
             if isinstance(cp, dict):
                 # channel_values holds per-channel state
-                channel_vals = cp.get('channel_values', {})
-                msgs = channel_vals.get('messages', []) or []
+                channel_vals = cp.get("channel_values", {})
+                msgs = channel_vals.get("messages", []) or []
             else:
-                msgs = getattr(cp, 'messages', []) or []
-    except Exception as e:
+                msgs = getattr(cp, "messages", []) or []
+    except Exception:
         # error loading history, return empty
         msgs = []
     # Convert to serializable form
     result = []
-    from langchain.schema import AIMessage, HumanMessage
+    from langchain.schema import AIMessage
+
     for m in msgs:
         # determine sender and extract timestamp if present
-        sender = 'assistant' if isinstance(m, AIMessage) else 'user'
-        ts = getattr(m, 'additional_kwargs', {}).get('timestamp')
-        entry: dict = {'sender': sender, 'content': m.content}
+        sender = "assistant" if isinstance(m, AIMessage) else "user"
+        ts = getattr(m, "additional_kwargs", {}).get("timestamp")
+        entry: dict = {"sender": sender, "content": m.content}
         if ts is not None:
-            entry['timestamp'] = ts
+            entry["timestamp"] = ts
         result.append(entry)
     return result
 
@@ -154,20 +160,22 @@ async def chat_history(
 @router.get("/chat/search")
 async def chat_search(
     request: Request,
-    thread_id: str,
-    q: str,
+    thread_id: str | None = None,
+    q: str = "",
     settings: Settings = Depends(get_settings),
 ):
     """Semantic search of a thread via Chroma."""
     await _authorize(request, settings)
 
-    try:
-        tid = str(UUID(thread_id, version=4))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid thread_id") from exc
+    tid = None
+    if thread_id:
+        try:
+            tid = str(UUID(thread_id, version=4))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid thread_id") from exc
 
     try:
-        results = chroma_search(tid, q, k=8)
+        results = chroma_search(tid or "", q, k=8)
     except Exception:
         logger.exception("Chroma search failed")
         raise HTTPException(status_code=503, detail="Vector store unavailable")

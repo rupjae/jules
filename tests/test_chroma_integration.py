@@ -22,7 +22,9 @@ class EchoLLM:
 
 def _decode(body: str) -> str:
     return "".join(
-        line.split("data: ", 1)[1] for line in body.splitlines() if line.startswith("data:")
+        line.split("data: ", 1)[1]
+        for line in body.splitlines()
+        if line.startswith("data:")
     )
 
 
@@ -31,6 +33,7 @@ def _setup(monkeypatch, tmp_path):
     monkeypatch.setattr(main_graph, "ChatOpenAI", EchoLLM)
     import importlib
     import backend.app.checkpointer as cp
+
     importlib.reload(cp)
     importlib.reload(main_graph)
     app.state.graph = main_graph.build_graph()
@@ -38,7 +41,10 @@ def _setup(monkeypatch, tmp_path):
 
     class DummyEmbed:
         def __call__(self, texts):
-            return [[1.0, 0.0] if "apple" in t or "fruit" in t else [0.0, 1.0] for t in texts]
+            return [
+                [1.0, 0.0] if "apple" in t or "fruit" in t else [0.0, 1.0]
+                for t in texts
+            ]
 
     chroma._collection = chroma._client.get_or_create_collection(
         "threads_memory", embedding_function=DummyEmbed()
