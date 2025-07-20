@@ -40,9 +40,13 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [threadId] = useState(
-    () => localStorage.getItem('julesThreadId') || uuidv4()
-  );
+  const [threadId] = useState<string>(() => {
+    // On client, persist thread ID in localStorage; on server, just generate a new UUID
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('julesThreadId') ?? uuidv4();
+    }
+    return uuidv4();
+  });
   useEffect(() => {
     localStorage.setItem('julesThreadId', threadId);
   }, [threadId]);
