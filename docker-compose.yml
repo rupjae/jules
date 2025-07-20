@@ -13,4 +13,14 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./data:/app/data
-
+  # Chroma vector database, empty instance ready for use
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: chroma
+    ports:
+      # Chroma HTTP API exposed on host port 8001
+      - "8001:8000"
+    volumes:
+      # Persist Chroma data in local data/chroma directory
+      - ./data/chroma:/data
+    restart: unless-stopped

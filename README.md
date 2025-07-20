@@ -81,6 +81,7 @@ Open your browser:
 
 • http://localhost:3000  → Next.js dev UI with hot-reload
 • http://localhost:8000  → FastAPI API (and the static build when dev server is stopped)
+• http://localhost:8001  → Chroma vector database HTTP API (empty instance)
 
 ## UI Theming
 
