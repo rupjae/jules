@@ -6,6 +6,7 @@ from typing import Annotated, List
 
 from langchain_openai import ChatOpenAI
 from langchain.schema import AIMessage, BaseMessage
+import datetime
 from langgraph.graph import END, StateGraph
 from langchain_core.runnables import RunnableConfig
 from typing_extensions import TypedDict
@@ -36,7 +37,13 @@ def _llm_node(state: GraphState, config: RunnableConfig | None = None) -> GraphS
         temperature=0.2,
         openai_api_key=settings.openai_api_key,
     )
-    ai_msg: AIMessage = llm.invoke(state["messages"])
+    # Generate AI response and annotate with timestamp
+    raw_msg: AIMessage = llm.invoke(state["messages"])
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    # preserve content and attach timestamp metadata
+    ai_msg = AIMessage(content=raw_msg.content,
+                       additional_kwargs={**getattr(raw_msg, 'additional_kwargs', {}),
+                                          'timestamp': now})
     return {"messages": [ai_msg]}
 
 

@@ -59,6 +59,7 @@ Then open http://localhost:8000 to chat with **Jules**.
 - **GET /api/chat/history?thread_id=<id>**
   Returns the full conversation history as JSON:
   ```
+  > NOTE: Both `/api/chat/history` and `/api/chat/search` responses now include a `"timestamp"` field (ISO-8601 UTC) for each message.
   [
     {"sender": "user",      "content": "Hello!"},
     {"sender": "assistant", "content": "Hi there!"},

@@ -16,6 +16,7 @@ from langchain.schema import HumanMessage
 from sse_starlette.sse import EventSourceResponse
 
 from ..config import Settings, get_settings
+import datetime
 
 
 router = APIRouter(prefix="/api")
@@ -76,7 +77,10 @@ async def chat_endpoint(
         # (SQLite or in-memory) when a checkpoint for *thread_id* exists.  This
         # avoids the earlier "checkpoint['v'] is None" migration bug.
 
-        user_state = {"messages": [HumanMessage(content=prompt)]}
+        # include timestamp metadata on user message
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        user_state = {"messages": [HumanMessage(content=prompt,
+                                                 additional_kwargs={"timestamp": now})]}
 
         loop = asyncio.get_running_loop()
 
@@ -130,9 +134,51 @@ async def chat_history(
         msgs = []
     # Convert to serializable form
     result = []
+    from langchain.schema import AIMessage, HumanMessage
     for m in msgs:
-        from langchain.schema import AIMessage, HumanMessage
-
+        # determine sender and extract timestamp if present
         sender = 'assistant' if isinstance(m, AIMessage) else 'user'
-        result.append({'sender': sender, 'content': m.content})
+        ts = getattr(m, 'additional_kwargs', {}).get('timestamp')
+        entry: dict = {'sender': sender, 'content': m.content}
+        if ts is not None:
+            entry['timestamp'] = ts
+        result.append(entry)
     return result
+
+
+@router.get("/chat/search")
+async def chat_search(
+    request: Request,
+    q: str,
+    settings: Settings = Depends(get_settings)
+):
+    """Search across all thread histories for messages containing a substring."""
+    await _authorize(request, settings)
+    saver = request.app.state.checkpointer
+    conn = saver.conn  # sqlite3.Connection
+    cur = conn.cursor()
+    # get all thread IDs
+    cur.execute("SELECT DISTINCT thread_id FROM checkpoints")
+    threads = [row[0] for row in cur.fetchall()]
+    results: list[dict] = []
+    from langchain.schema import AIMessage, HumanMessage
+    for tid in threads:
+        tup = saver.get_tuple({"configurable": {"thread_id": tid}})
+        if not tup:
+            continue
+        cp = tup.checkpoint
+        msgs = []
+        if isinstance(cp, dict):
+            channel_vals = cp.get('channel_values', {})
+            msgs = channel_vals.get('messages', []) or []
+        else:
+            msgs = getattr(cp, 'messages', []) or []
+        for m in msgs:
+            if q.lower() in m.content.lower():
+                sender = 'assistant' if isinstance(m, AIMessage) else 'user'
+                ts = getattr(m, 'additional_kwargs', {}).get('timestamp')
+                entry: dict = {'thread_id': tid, 'sender': sender, 'content': m.content}
+                if ts is not None:
+                    entry['timestamp'] = ts
+                results.append(entry)
+    return results
