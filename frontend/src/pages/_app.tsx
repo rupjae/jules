@@ -1,7 +1,16 @@
 import type { AppProps } from 'next/app';
 // Include Catppuccin Macchiato CSS variables globally
+// Import Catppuccin Macchiato CSS variables (if used elsewhere)
 import '../styles/catppuccin-macchiato.css';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import {
+  CtpSemanticBackground,
+  CtpSemanticText,
+  CtpSemanticSurface,
+  CtpSemanticPrimary,
+  CtpSemanticError,
+  CtpColorSubtext1,
+} from '../styles/catppuccin-macchiato';
 
 // ---------------------------------------------------------------------------
 // Optional theme inclusion
@@ -21,22 +30,23 @@ import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 require('../styles/catppuccin-macchiato.css');
 
 // Create MUI theme using Catppuccin CSS variables
+// Create MUI theme using Catppuccin Macchiato palette constants
 const theme = createTheme({
   palette: {
     mode: 'dark',
     background: {
-      default: 'var(--ctp-semantic-background)',
-      paper: 'var(--ctp-semantic-surface)',
+      default: CtpSemanticBackground,
+      paper: CtpSemanticSurface,
     },
     text: {
-      primary: 'var(--ctp-semantic-text)',
-      secondary: 'var(--ctp-semantic-subtext1)',
+      primary: CtpSemanticText,
+      secondary: CtpColorSubtext1,
     },
     primary: {
-      main: 'var(--ctp-semantic-primary)',
+      main: CtpSemanticPrimary,
     },
     error: {
-      main: 'var(--ctp-semantic-error)',
+      main: CtpSemanticError,
     },
   },
 });
