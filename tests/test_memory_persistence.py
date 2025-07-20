@@ -15,13 +15,14 @@ from typing import List
 from langchain.schema import AIMessage, HumanMessage
 
 
-def test_thread_memory_survives_restart(tmp_path: Path, monkeypatch) -> None:  # noqa: D401
+def test_thread_memory_survives_restart(
+    tmp_path: Path, monkeypatch
+) -> None:  # noqa: D401
     """Two separate graph instances share conversation history via checkpoints."""
 
     # ----------------------------------------------------------------------------
-    # Point the backend to a temp SQLite file (or intentionally disable it to
-    # test the in-memory fallback).  The environment variable must be set *before*
-    # the first import of backend modules that read the setting.
+    # Point the backend to a temp SQLite file. The environment variable must be
+    # set *before* the first import of backend modules that read the setting.
     # ----------------------------------------------------------------------------
 
     db_file = tmp_path / "checkpoints.sqlite"
@@ -36,6 +37,7 @@ def test_thread_memory_survives_restart(tmp_path: Path, monkeypatch) -> None:  #
     # module so that the singleton gets re-created from disk instead of reusing
     # the in-memory instance created above.
     import backend.app.checkpointer as cp  # reload to reset singleton
+
     importlib.reload(cp)
 
     importlib.reload(mg)
@@ -55,7 +57,10 @@ def test_thread_memory_survives_restart(tmp_path: Path, monkeypatch) -> None:  #
     tid = "thread-42"
     first_prompt = "hi there"
 
-    for step in graph1.stream({"messages": [HumanMessage(content=first_prompt)]}, {"configurable": {"thread_id": tid}}):
+    for step in graph1.stream(
+        {"messages": [HumanMessage(content=first_prompt)]},
+        {"configurable": {"thread_id": tid}},
+    ):
         pass  # we don't need the reply yet
 
     # Second graph simulates *new* process --------------------------------------
@@ -66,7 +71,10 @@ def test_thread_memory_survives_restart(tmp_path: Path, monkeypatch) -> None:  #
 
     latest = ""
     second_prompt = "remember me?"
-    for step in graph2.stream({"messages": [HumanMessage(content=second_prompt)]}, {"configurable": {"thread_id": tid}}):
+    for step in graph2.stream(
+        {"messages": [HumanMessage(content=second_prompt)]},
+        {"configurable": {"thread_id": tid}},
+    ):
         msgs: List | None = step.get("llm", {}).get("messages")
         if msgs:
             latest = msgs[-1].content

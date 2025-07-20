@@ -129,5 +129,13 @@ Match existing patterns; otherwise propose via PR comment or minimal stub.
 
 ⸻
 
-Last edited: 2025‑06‑22
+## 13 · Legacy Code
+        •       This is a green‑field project. Avoid compatibility shims or
+                fallbacks for missing dependencies.
+        •       Remove or reject code meant solely to support retired APIs or
+                behaviour.
+
+⸻
+
+Last edited: 2025‑07‑20
 
