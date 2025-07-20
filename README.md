@@ -64,7 +64,30 @@ Open your browser:
 
 ## UI Theming
 
-Run `npm --prefix frontend run build:tokens` to generate CSS variables and TypeScript exports.
+Jules ships with the **Catppuccin Macchiato** palette but does **not** enable it
+by default to avoid inflating the CSS bundle for users that prefer the
+standard Material-UI look.  Opt-in is controlled via an environment variable
+at build (or run) time:
+
+```bash
+# Next.js build using the Catppuccin theme
+NEXT_PUBLIC_THEME=catppuccin npm --prefix frontend run build
+```
+
+When `NEXT_PUBLIC_THEME` equals `catppuccin`, the global `_app.tsx` file
+imports `src/styles/catppuccin-macchiato.css` automatically.  If the variable
+is unset or set to a different value, no extra stylesheet is loaded and the
+baseline bundle size remains unchanged.
+
+### Accessibility
+
+The colour combinations used in the Macchiato palette have been verified with
+the WebAIM Contrast Checker and meet **WCAG 2.1 AA** (contrast ≥ 4.5:1) for
+normal text.  When introducing new UI elements make sure that any additional
+foreground/background pairs continue to pass or document known exceptions.
+
+Run `npm --prefix frontend run build:tokens` to re-generate CSS variables and
+TypeScript exports after editing `src/design-tokens/*.json`.
 
 ### Tailwind usage
 
