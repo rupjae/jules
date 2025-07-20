@@ -41,17 +41,41 @@ export function Chat() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   // threadId: generated once (server or client) and persisted in localStorage on the client
-  const [threadId] = useState<string>(() => {
+  const [threadId, setThreadId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('julesThreadId') ?? uuidv4();
     }
     return uuidv4();
   });
+  // persist threadId when it changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('julesThreadId', threadId);
     }
   }, [threadId]);
+  // start a new conversation
+  const handleNewConversation = () => {
+    const newId = uuidv4();
+    setThreadId(newId);
+    setMessages([]);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('julesThreadId', newId);
+    }
+  };
+  // real token count using tiktoken-js
+  const [encoder, setEncoder] = useState<any>(null);
+  const [tokenCount, setTokenCount] = useState<number>(0);
+  useEffect(() => {
+    import('@dqbd/tiktoken')
+      .then((mod) => mod.encoding_for_model('gpt-4o-mini'))
+      .then((enc: any) => setEncoder(enc));
+  }, []);
+  useEffect(() => {
+    if (!encoder) return;
+    const text = messages.map((m) => m.content).join(' ');
+    const tokens = encoder.encode(text).length;
+    setTokenCount(tokens);
+  }, [messages, encoder]);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const sendMessage = () => {
@@ -96,6 +120,10 @@ export function Chat() {
 
   return (
     <Box sx={{ maxWidth: 600, margin: 'auto', mt: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="caption">Memory tokens: {tokenCount}</Typography>
+        <Button size="small" onClick={handleNewConversation}>New Conversation</Button>
+      </Box>
       <Paper sx={{ p: 2, height: 500, overflowY: 'auto' }}>
         {messages.map((m, idx) => (
           <Typography
