@@ -62,6 +62,30 @@ Open your browser:
 • http://localhost:3000  → Next.js dev UI with hot-reload
 • http://localhost:8000  → FastAPI API (and the static build when dev server is stopped)
 
+## UI Theming
+
+Run `npm --prefix frontend run build:tokens` to generate CSS variables and TypeScript exports.
+
+### Tailwind usage
+
+```tsx
+// tailwind.config.js
+const palette = require('@catppuccin/palette');
+module.exports = {
+  darkMode: 'class',
+  theme: { colors: { ctp: palette.flavors.macchiato.colors } }
+};
+```
+
+### Chakra usage
+
+```ts
+import { ChakraProvider } from '@chakra-ui/react';
+import catppuccinTheme from '../src/theme/catppuccin';
+
+<ChakraProvider theme={catppuccinTheme}>...</ChakraProvider>
+```
+
 ## License
 
 MIT
