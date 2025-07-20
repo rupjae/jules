@@ -1,0 +1,9 @@
+[project]
+name = "jules"
+version = "0.1.0"
+
+[project.optional-dependencies]
+audit = ["pip-audit"]
+
+[tool.importlinter]
+contracts = ["importlinter_contracts.greenfield:Contract"]

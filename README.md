@@ -1,5 +1,7 @@
 # Jules 🗣️🤖
 
+[![Keeping Jules Green](https://img.shields.io/badge/Keeping%20Jules%20Green-docs-green)](docs/ci-greenfield.md)
+
 An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and a Next.js (React, TypeScript, Material-UI) frontend.
 
 ## Project layout

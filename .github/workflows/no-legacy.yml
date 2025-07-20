@@ -1,0 +1,20 @@
+name: Block legacy paths
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if PR adds/modifies forbidden paths
+        run: |
+          set -eu
+          git fetch --depth=1 origin ${{ github.base_ref }}
+          paths=$(git diff --name-only origin/${{ github.base_ref }} |
+            grep -Ei '(^|/)(legacy|shim)/|legacy|shim' |
+            grep -v -E '^\.github/workflows/no-legacy.yml$|^tests/ci/test_no_legacy.py$|^tests/test_no_legacy_patterns.py$' || true)
+          if [[ -n "$paths" ]]; then
+            echo "::error::Legacy/shim files touched:\n$paths"
+            exit 1
+          fi
