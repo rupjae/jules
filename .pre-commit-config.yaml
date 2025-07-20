@@ -3,7 +3,11 @@ repos:
     hooks:
       - id: detect-legacy-paths
         name: Detect legacy paths
-        entry: bash -c "git diff --cached --name-only | grep -Ei '(^|/)(legacy|shim)/|legacy|shim' && exit 1 || exit 0"
+        entry: >-
+          bash -c "git diff --cached --name-only |
+          grep -Ei '(^|/)(legacy|shim)/|legacy|shim' |
+          grep -v -E '^\.github/workflows/no-legacy.yml$|^tests/ci/test_no_legacy.py$|^tests/test_no_legacy_patterns.py$'
+          && exit 1 || exit 0"
         language: system
         pass_filenames: false
       - id: detect-legacy-imports
