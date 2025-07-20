@@ -67,7 +67,8 @@ export function Chat() {
   const [tokenCount, setTokenCount] = useState<number>(0);
   useEffect(() => {
     import('@dqbd/tiktoken')
-      .then((mod) => mod.encoding_for_model('gpt-4o-mini'))
+      // Use cl100k_base encoding (compatible with OpenAI GPT family)
+      .then((mod) => mod.get_encoding('cl100k_base'))
       .then((enc: any) => setEncoder(enc));
   }, []);
   useEffect(() => {
