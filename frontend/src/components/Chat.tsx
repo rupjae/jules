@@ -91,6 +91,8 @@ export function Chat() {
     setTokenCount(approx);
   }, [messages]);
   const eventSourceRef = useRef<EventSource | null>(null);
+  // ref to scrollable messages container
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const sendMessage = () => {
     if (!input.trim()) return;
@@ -131,6 +133,13 @@ export function Chat() {
       eventSourceRef.current?.close();
     };
   }, []);
+  // scroll to bottom whenever messages change
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
 
   return (
     <Box sx={{ maxWidth: 600, margin: 'auto', mt: 4 }}>
@@ -141,7 +150,7 @@ export function Chat() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Typography variant="caption">Session ID: {threadId}</Typography>
       </Box>
-      <Paper sx={{ p: 2, height: 500, overflowY: 'auto' }}>
+      <Paper ref={containerRef} sx={{ p: 2, height: 500, overflowY: 'auto' }}>
         {messages.map((m, idx) => (
           <Typography
             key={idx}
@@ -158,6 +167,8 @@ export function Chat() {
       <Box sx={{ display: 'flex', mt: 2 }}>
         <TextField
           fullWidth
+          name="chatMessage"
+          autoComplete="off"
           value={input}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
             setInput(e.target.value)}
