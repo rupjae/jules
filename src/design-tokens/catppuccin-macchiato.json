@@ -1,0 +1,37 @@
+{
+  "color": {
+    "rosewater": {"value": "#f4dbd6"},
+    "flamingo": {"value": "#f0c6c6"},
+    "pink": {"value": "#f5bde6"},
+    "mauve": {"value": "#c6a0f6"},
+    "red": {"value": "#ed8796"},
+    "maroon": {"value": "#ee99a0"},
+    "peach": {"value": "#f5a97f"},
+    "yellow": {"value": "#eed49f"},
+    "green": {"value": "#a6da95"},
+    "teal": {"value": "#8bd5ca"},
+    "sky": {"value": "#91d7e3"},
+    "sapphire": {"value": "#7dc4e4"},
+    "blue": {"value": "#8aadf4"},
+    "lavender": {"value": "#b7bdf8"},
+    "text": {"value": "#cad3f5"},
+    "subtext1": {"value": "#b8c0e0"},
+    "subtext0": {"value": "#a5adcb"},
+    "overlay2": {"value": "#939ab7"},
+    "overlay1": {"value": "#8087a2"},
+    "overlay0": {"value": "#6e738d"},
+    "surface2": {"value": "#5b6078"},
+    "surface1": {"value": "#494d64"},
+    "surface0": {"value": "#363a4f"},
+    "base": {"value": "#24273a"},
+    "mantle": {"value": "#1e2030"},
+    "crust": {"value": "#181926"}
+  },
+  "semantic": {
+    "background": {"value": "{color.base.value}"},
+    "text": {"value": "{color.text.value}"},
+    "primary": {"value": "{color.blue.value}"},
+    "error": {"value": "{color.red.value}"},
+    "surface": {"value": "{color.surface0.value}"}
+  }
+}

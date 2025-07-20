@@ -1,0 +1,37 @@
+/**
+ * Do not edit directly, this file was auto-generated.
+ */
+
+:root {
+  --ctp-color-rosewater: #f4dbd6;
+  --ctp-color-flamingo: #f0c6c6;
+  --ctp-color-pink: #f5bde6;
+  --ctp-color-mauve: #c6a0f6;
+  --ctp-color-red: #ed8796;
+  --ctp-color-maroon: #ee99a0;
+  --ctp-color-peach: #f5a97f;
+  --ctp-color-yellow: #eed49f;
+  --ctp-color-green: #a6da95;
+  --ctp-color-teal: #8bd5ca;
+  --ctp-color-sky: #91d7e3;
+  --ctp-color-sapphire: #7dc4e4;
+  --ctp-color-blue: #8aadf4;
+  --ctp-color-lavender: #b7bdf8;
+  --ctp-color-text: #cad3f5;
+  --ctp-color-subtext1: #b8c0e0;
+  --ctp-color-subtext0: #a5adcb;
+  --ctp-color-overlay2: #939ab7;
+  --ctp-color-overlay1: #8087a2;
+  --ctp-color-overlay0: #6e738d;
+  --ctp-color-surface2: #5b6078;
+  --ctp-color-surface1: #494d64;
+  --ctp-color-surface0: #363a4f;
+  --ctp-color-base: #24273a;
+  --ctp-color-mantle: #1e2030;
+  --ctp-color-crust: #181926;
+  --ctp-semantic-background: var(--ctp-color-base);
+  --ctp-semantic-text: var(--ctp-color-text);
+  --ctp-semantic-primary: var(--ctp-color-blue);
+  --ctp-semantic-error: var(--ctp-color-red);
+  --ctp-semantic-surface: var(--ctp-color-surface0);
+}

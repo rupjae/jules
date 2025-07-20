@@ -64,6 +64,53 @@ Open your browser:
 • http://localhost:3000  → Next.js dev UI with hot-reload
 • http://localhost:8000  → FastAPI API (and the static build when dev server is stopped)
 
+## UI Theming
+
+Jules ships with the **Catppuccin Macchiato** palette but does **not** enable it
+by default to avoid inflating the CSS bundle for users that prefer the
+standard Material-UI look.  Opt-in is controlled via an environment variable
+at build (or run) time:
+
+```bash
+# Next.js build using the Catppuccin theme
+NEXT_PUBLIC_THEME=catppuccin npm --prefix frontend run build
+```
+
+When `NEXT_PUBLIC_THEME` equals `catppuccin`, the global `_app.tsx` file
+imports `src/styles/catppuccin-macchiato.css` automatically.  If the variable
+is unset or set to a different value, no extra stylesheet is loaded and the
+baseline bundle size remains unchanged.
+
+### Accessibility
+
+The colour combinations used in the Macchiato palette have been verified with
+the WebAIM Contrast Checker and meet **WCAG 2.1 AA** (contrast ≥ 4.5:1) for
+normal text.  When introducing new UI elements make sure that any additional
+foreground/background pairs continue to pass or document known exceptions.
+
+Run `npm --prefix frontend run build:tokens` to re-generate CSS variables and
+TypeScript exports after editing `src/design-tokens/*.json`.
+
+### Tailwind usage
+
+```tsx
+// tailwind.config.js
+const palette = require('@catppuccin/palette');
+module.exports = {
+  darkMode: 'class',
+  theme: { colors: { ctp: palette.flavors.macchiato.colors } }
+};
+```
+
+### Chakra usage
+
+```ts
+import { ChakraProvider } from '@chakra-ui/react';
+import catppuccinTheme from '../src/theme/catppuccin';
+
+<ChakraProvider theme={catppuccinTheme}>...</ChakraProvider>
+```
+
 ## License
 
 MIT
