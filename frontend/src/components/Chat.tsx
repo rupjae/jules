@@ -62,21 +62,34 @@ export function Chat() {
       localStorage.setItem('julesThreadId', newId);
     }
   };
-  // real token count using tiktoken-js
-  const [encoder, setEncoder] = useState<any>(null);
+  // message history loaded from backend
   const [tokenCount, setTokenCount] = useState<number>(0);
+  // load previous conversation on mount
+  // load previous conversation on mount
   useEffect(() => {
-    import('@dqbd/tiktoken')
-      // Use cl100k_base encoding (compatible with OpenAI GPT family)
-      .then((mod) => mod.get_encoding('cl100k_base'))
-      .then((enc: any) => setEncoder(enc));
-  }, []);
+    if (typeof window === 'undefined') return;
+    const loadHistory = async () => {
+      try {
+        const url = `${backendUrl}/api/chat/history?thread_id=${threadId}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data: Message[] = await res.json();
+          setMessages(data);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    loadHistory();
+  }, [threadId]);
+
+  // update token count whenever messages change (approximate: chars/4)
   useEffect(() => {
-    if (!encoder) return;
-    const text = messages.map((m) => m.content).join(' ');
-    const tokens = encoder.encode(text).length;
-    setTokenCount(tokens);
-  }, [messages, encoder]);
+    const approx = Math.round(
+      messages.reduce((sum, m) => sum + m.content.length, 0) / 4
+    );
+    setTokenCount(approx);
+  }, [messages]);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const sendMessage = () => {
@@ -124,6 +137,9 @@ export function Chat() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Typography variant="caption">Memory tokens: {tokenCount}</Typography>
         <Button size="small" onClick={handleNewConversation}>New Conversation</Button>
+      </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="caption">Session ID: {threadId}</Typography>
       </Box>
       <Paper sx={{ p: 2, height: 500, overflowY: 'auto' }}>
         {messages.map((m, idx) => (
