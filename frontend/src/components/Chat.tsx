@@ -40,12 +40,14 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [threadId] = useState(
-    () => localStorage.getItem('julesThreadId') || uuidv4()
-  );
+  const [threadId, setThreadId] = useState<string>('');
+
   useEffect(() => {
-    localStorage.setItem('julesThreadId', threadId);
-  }, [threadId]);
+    if (typeof window === 'undefined') return;
+    const stored = localStorage.getItem('julesThreadId') || uuidv4();
+    setThreadId(stored);
+    localStorage.setItem('julesThreadId', stored);
+  }, []);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const sendMessage = () => {
