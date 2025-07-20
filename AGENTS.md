@@ -1,4 +1,10 @@
-# AGENTS Coding Guidelines (v0.2 – June 2025)
+# AGENTS Coding Guidelines (v0.2 – June 2025)
+
+> **🚨 Environment Note (2025-07-20)**
+>
+> ‑ This execution environment **does have outbound internet access** (e.g. `curl example.com` succeeds) and full access to the **git CLI**.
+> ‑ Only state that something cannot be done when you have verified—by actually attempting it or by documented restriction—that it is impossible.
+
 
 *This file is the single source of truth for contributor‑facing rules.  
 If anything here conflicts with code comments, **this document wins**.*
@@ -138,4 +144,3 @@ Match existing patterns; otherwise propose via PR comment or minimal stub.
 ⸻
 
 Last edited: 2025‑07‑20
-
