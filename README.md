@@ -34,7 +34,9 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
 
 ## Quick start (development)
 
-1. Copy `.env.example` → `.env` and add your `OPENAI_API_KEY`.
+1. Copy `.env.example` → `.env` and fill in:
+   - `OPENAI_API_KEY=<your OpenAI key>` (required)
+   - `JULES_AUTH_TOKEN=<optional bearer token>` (commented out by default; leave unset to disable auth)
 2. Install Python deps & run backend:
 
 ```bash
