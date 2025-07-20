@@ -53,8 +53,12 @@ async def chat_endpoint(
             detail="Message is required",
         )
 
-    # Use header-supplied thread id or create one.
-    thread_id = request.headers.get("X-Thread-ID") or str(uuid4())
+    # Use header- or query-supplied thread id or create one.
+    thread_id = (
+        request.headers.get("X-Thread-ID")
+        or request.query_params.get("thread_id")
+        or str(uuid4())
+    )
 
     graph = request.app.state.graph
 

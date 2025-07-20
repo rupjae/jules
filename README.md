@@ -47,8 +47,9 @@ persists only while the server is running.
 
 Then open http://localhost:8000 to chat with **Jules**.
 The backend will return the generated `X-Thread-ID` header on the very first
-request so that clients can persist it; simply include the same header in all
-subsequent calls to continue the same conversation thread.
+request so that clients can persist it.  Subsequent calls should repeat the
+same ID either via the `X-Thread-ID` header or as a `thread_id` query
+parameter to continue the conversation thread.
 
 ## Docker (single image)
 

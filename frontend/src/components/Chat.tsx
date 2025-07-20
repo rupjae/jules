@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import {
   Box,
   Button,
@@ -39,6 +40,12 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [threadId] = useState(
+    () => localStorage.getItem('julesThreadId') || uuidv4()
+  );
+  useEffect(() => {
+    localStorage.setItem('julesThreadId', threadId);
+  }, [threadId]);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const sendMessage = () => {
@@ -48,7 +55,9 @@ export function Chat() {
     setInput('');
     setLoading(true);
 
-    const url = `${backendUrl}/api/chat?message=${encodeURIComponent(input)}`;
+    const url =
+      `${backendUrl}/api/chat?thread_id=${threadId}` +
+      `&message=${encodeURIComponent(input)}`;
     const es = new EventSource(url, { withCredentials: false });
 
     eventSourceRef.current = es;
