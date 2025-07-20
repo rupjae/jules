@@ -1,7 +1,7 @@
-from importlinter import Contract
+from importlinter import Contract as ImportContract
 from importlinter.domain.contract import ForbiddenContract
 
-Contract(
+Contract = ImportContract(
     name="No legacy imports",
     session_options={"root_package": "jules"},
     contract=ForbiddenContract(

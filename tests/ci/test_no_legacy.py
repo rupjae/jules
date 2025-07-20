@@ -12,4 +12,6 @@ def test_no_legacy_paths() -> None:
             continue
         text = str(path)
         for token in FORBIDDEN:
-            assert token not in text.lower(), f"Forbidden path segment '{token}' in {path}"
+            assert (
+                token not in text.lower()
+            ), f"Forbidden path segment '{token}' in {path}"
