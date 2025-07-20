@@ -42,8 +42,8 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Conversation memory is stored in-process using a singleton MemorySaver, so it
-persists only while the server is running.
+Conversation history is stored in a SQLite database under `data/` so it
+persists across restarts.
 
 Then open http://localhost:8000 to chat with **Jules**.
 The backend will return the generated `X-Thread-ID` header on the very first
