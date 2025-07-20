@@ -81,7 +81,17 @@ Open your browser:
 
 • http://localhost:3000  → Next.js dev UI with hot-reload
 • http://localhost:8000  → FastAPI API (and the static build when dev server is stopped)
-• http://localhost:8001  → Chroma vector database HTTP API (empty instance)
+• http://chroma:8000  → Chroma vector database HTTP API (Docker network)
+
+### Vector Store
+
+The `chroma` service acts as the vector store side-car.  Data persists under
+`./.chroma-data` on the host so the index survives container restarts.  Remove
+that directory to wipe all embeddings:
+
+```bash
+make clean-vector-store
+```
 
 ## UI Theming
 

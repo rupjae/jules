@@ -16,11 +16,12 @@ services:
   # Chroma vector database, empty instance ready for use
   chroma:
     image: ghcr.io/chroma-core/chroma:latest
-    container_name: chroma
-    ports:
-      # Chroma HTTP API exposed on host port 8001
-      - "8001:8000"
     volumes:
-      # Persist Chroma data in local data/chroma directory
-      - ./data/chroma:/data
-    restart: unless-stopped
+      # Persist Chroma data locally
+      - ./.chroma-data:/chroma/.chroma
+    healthcheck:
+      start_period: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 2s
+      retries: 6

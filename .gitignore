@@ -68,3 +68,4 @@ Thumbs.db
 
 # Persisted conversation checkpoints (mounted in container)
 data/
+/.chroma-data/
