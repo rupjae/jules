@@ -12,7 +12,8 @@ import asyncio
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, SystemMessage
+from pathlib import Path
 from sse_starlette.sse import EventSourceResponse
 
 from ..config import Settings, get_settings
@@ -77,10 +78,21 @@ async def chat_endpoint(
         # (SQLite or in-memory) when a checkpoint for *thread_id* exists.  This
         # avoids the earlier "checkpoint['v'] is None" migration bug.
 
-        # include timestamp metadata on user message
+        # Load system prompt and include it before the user message
+        prompts_path = Path(__file__).parent.parent / "prompts" / "root.system.md"
+        try:
+            system_text = prompts_path.read_text(encoding="utf-8").strip()
+        except Exception:
+            system_text = ""
+        # Prepare messages: system prompt followed by user message with timestamp
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        user_state = {"messages": [HumanMessage(content=prompt,
-                                                 additional_kwargs={"timestamp": now})]}
+        messages: list = []
+        if system_text:
+            messages.append(SystemMessage(content=system_text))
+        messages.append(
+            HumanMessage(content=prompt, additional_kwargs={"timestamp": now})
+        )
+        user_state = {"messages": messages}
 
         loop = asyncio.get_running_loop()
 
