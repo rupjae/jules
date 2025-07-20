@@ -36,6 +36,7 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
 
 1. Copy `.env.example` → `.env` and fill in:
    - `OPENAI_API_KEY=<your OpenAI key>` (required)
+   - `CHROMA_HOST=localhost` and `CHROMA_PORT=8001` for the vector store
    - `JULES_AUTH_TOKEN=<optional bearer token>` (commented out by default; leave unset to disable auth)
 2. Install Python deps & run backend:
 

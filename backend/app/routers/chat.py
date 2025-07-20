@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langchain.schema import HumanMessage
 from sse_starlette.sse import EventSourceResponse
 
+from db.chroma import save_message, search as chroma_search
+
 from ..config import Settings, get_settings
 import datetime
 
@@ -81,6 +83,7 @@ async def chat_endpoint(
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         user_state = {"messages": [HumanMessage(content=prompt,
                                                  additional_kwargs={"timestamp": now})]}
+        await save_message(thread_id, "user", prompt)
 
         loop = asyncio.get_running_loop()
 
@@ -94,6 +97,8 @@ async def chat_endpoint(
             return latest_tokens
 
         tokens: List[str] = await loop.run_in_executor(None, _run_sync)
+        full = "".join(tokens)
+        await save_message(thread_id, "assistant", full)
         for ch in tokens:
             yield ch
 
@@ -149,36 +154,25 @@ async def chat_history(
 @router.get("/chat/search")
 async def chat_search(
     request: Request,
+    thread_id: str,
     q: str,
-    settings: Settings = Depends(get_settings)
+    settings: Settings = Depends(get_settings),
 ):
-    """Search across all thread histories for messages containing a substring."""
+    """Semantic search of a thread via Chroma."""
     await _authorize(request, settings)
-    saver = request.app.state.checkpointer
-    conn = saver.conn  # sqlite3.Connection
-    cur = conn.cursor()
-    # get all thread IDs
-    cur.execute("SELECT DISTINCT thread_id FROM checkpoints")
-    threads = [row[0] for row in cur.fetchall()]
-    results: list[dict] = []
-    from langchain.schema import AIMessage, HumanMessage
-    for tid in threads:
-        tup = saver.get_tuple({"configurable": {"thread_id": tid}})
-        if not tup:
-            continue
-        cp = tup.checkpoint
-        msgs = []
-        if isinstance(cp, dict):
-            channel_vals = cp.get('channel_values', {})
-            msgs = channel_vals.get('messages', []) or []
-        else:
-            msgs = getattr(cp, 'messages', []) or []
-        for m in msgs:
-            if q.lower() in m.content.lower():
-                sender = 'assistant' if isinstance(m, AIMessage) else 'user'
-                ts = getattr(m, 'additional_kwargs', {}).get('timestamp')
-                entry: dict = {'thread_id': tid, 'sender': sender, 'content': m.content}
-                if ts is not None:
-                    entry['timestamp'] = ts
-                results.append(entry)
-    return results
+
+    try:
+        tid = str(UUID(thread_id, version=4))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid thread_id") from exc
+
+    try:
+        results = chroma_search(tid, q, k=8)
+    except Exception:
+        logger.exception("Chroma search failed")
+        raise HTTPException(status_code=503, detail="Vector store unavailable")
+
+    return [
+        {"text": r["text"], "score": r["score"], "ts": r["ts"], "role": r["role"]}
+        for r in results
+    ]

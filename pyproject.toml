@@ -1,6 +1,9 @@
 [project]
 name = "jules"
 version = "0.1.0"
+requires-python = ">=3.12"
+[project.dependencies]
+chromadb = "0.4.24"
 
 [project.optional-dependencies]
 audit = ["pip-audit"]
