@@ -95,3 +95,44 @@ async def chat_endpoint(
 
     # Attach the (possibly freshly generated) thread id so clients can persist it.
     return EventSourceResponse(generator(), headers={"X-Thread-ID": thread_id})
+
+@router.get("/chat/history")
+async def chat_history(
+    request: Request, settings: Settings = Depends(get_settings)
+):
+    """Return the full message history for a given thread_id."""
+    await _authorize(request, settings)
+    raw_id = (request.headers.get(THREAD_ID_HEADER)
+              or request.query_params.get("thread_id"))
+    if raw_id is None:
+        raise HTTPException(status_code=400, detail="thread_id is required")
+    try:
+        thread_id = str(UUID(raw_id, version=4))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid thread_id") from exc
+    # Load saved state for this thread via the SqliteSaver get_tuple
+    saver = request.app.state.checkpointer
+    cfg = {"configurable": {"thread_id": thread_id}}
+    try:
+        tup = saver.get_tuple(cfg)
+        if tup is None:
+            msgs = []
+        else:
+            cp = tup.checkpoint
+            if isinstance(cp, dict):
+                # channel_values holds per-channel state
+                channel_vals = cp.get('channel_values', {})
+                msgs = channel_vals.get('messages', []) or []
+            else:
+                msgs = getattr(cp, 'messages', []) or []
+    except Exception as e:
+        # error loading history, return empty
+        msgs = []
+    # Convert to serializable form
+    result = []
+    for m in msgs:
+        from langchain.schema import AIMessage, HumanMessage
+
+        sender = 'assistant' if isinstance(m, AIMessage) else 'user'
+        result.append({'sender': sender, 'content': m.content})
+    return result
