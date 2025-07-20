@@ -40,14 +40,18 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [threadId, setThreadId] = useState<string>('');
-
+  // threadId: generated once (server or client) and persisted in localStorage on the client
+  const [threadId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('julesThreadId') ?? uuidv4();
+    }
+    return uuidv4();
+  });
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = localStorage.getItem('julesThreadId') || uuidv4();
-    setThreadId(stored);
-    localStorage.setItem('julesThreadId', stored);
-  }, []);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('julesThreadId', threadId);
+    }
+  }, [threadId]);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const sendMessage = () => {
