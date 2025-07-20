@@ -1,4 +1,7 @@
 import type { AppProps } from 'next/app';
+// Include Catppuccin Macchiato CSS variables globally
+import '../styles/catppuccin-macchiato.css';
+import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 
 // ---------------------------------------------------------------------------
 // Optional theme inclusion
@@ -17,6 +20,32 @@ import type { AppProps } from 'next/app';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require('../styles/catppuccin-macchiato.css');
 
+// Create MUI theme using Catppuccin CSS variables
+const theme = createTheme({
+  palette: {
+    mode: 'dark',
+    background: {
+      default: 'var(--ctp-semantic-background)',
+      paper: 'var(--ctp-semantic-surface)',
+    },
+    text: {
+      primary: 'var(--ctp-semantic-text)',
+      secondary: 'var(--ctp-semantic-subtext1)',
+    },
+    primary: {
+      main: 'var(--ctp-semantic-primary)',
+    },
+    error: {
+      main: 'var(--ctp-semantic-error)',
+    },
+  },
+});
+
 export default function JulesApp({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Component {...pageProps} />
+    </ThemeProvider>
+  );
 }
