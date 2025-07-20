@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import AsyncGenerator, List
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langchain.schema import HumanMessage
@@ -19,6 +19,8 @@ from ..config import Settings, get_settings
 
 
 router = APIRouter(prefix="/api")
+
+THREAD_ID_HEADER = "X-Thread-ID"
 
 
 async def _authorize(
@@ -53,8 +55,16 @@ async def chat_endpoint(
             detail="Message is required",
         )
 
-    # Use header-supplied thread id or create one.
-    thread_id = request.headers.get("X-Thread-ID") or str(uuid4())
+    raw_id = request.headers.get(THREAD_ID_HEADER) or request.query_params.get(
+        "thread_id"
+    )
+    if raw_id is not None:
+        try:
+            thread_id = str(UUID(raw_id, version=4))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid thread_id") from exc
+    else:
+        thread_id = str(uuid4())
 
     graph = request.app.state.graph
 
