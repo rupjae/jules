@@ -48,6 +48,21 @@ Conversation history is stored in a SQLite database under `data/` so it
 persists across restarts.
 
 Then open http://localhost:8000 to chat with **Jules**.
+
+### API Endpoints
+- **POST /api/chat?thread_id=<id>&message=<text>**
+  Streams chat completions via Server-Sent Events.  On the first request for a new thread,
+  the `X-Thread-ID` response header provides the generated session ID.  Include the same
+  `thread_id` (query or `X-Thread-ID` header) on subsequent calls to continue the conversation.
+- **GET /api/chat/history?thread_id=<id>**
+  Returns the full conversation history as JSON:
+  ```
+  [
+    {"sender": "user",      "content": "Hello!"},
+    {"sender": "assistant", "content": "Hi there!"},
+    ...
+  ]
+  ```
 The backend will return the generated `X-Thread-ID` header on the very first
 request so that clients can persist it.  Subsequent calls should repeat the
 same ID either via the `X-Thread-ID` header or as a `thread_id` query
