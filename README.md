@@ -71,7 +71,8 @@ Then open http://localhost:8000 to chat with **Jules**.
   ]
   ```
 - **GET /api/chat/search?thread_id=<id>&query=<text>**
-  Vector similarity search within a thread backed by Chroma.
+  Vector similarity search within a thread backed by Chroma. Returns a list of
+  objects `[{'text': str, 'distance': float, 'timestamp': float | null, 'role': str | null}]`.
 The backend will return the generated `X-Thread-ID` header on the very first
 request so that clients can persist it.  Subsequent calls should repeat the
 same ID either via the `X-Thread-ID` header or as a `thread_id` query

@@ -44,4 +44,4 @@ def test_chroma_save_search(chroma_fake_embed: None) -> None:
     res = anyio.run(chroma.search, "t1", "hello", 1)
     assert res
     assert res[0].text == "hello"
-    assert res[0].score <= 0.25
+    assert res[0].distance <= 0.25

@@ -32,7 +32,11 @@ def _get_client() -> ClientAPI:
     if _client is None:
         host = os.environ.get("CHROMA_HOST", "localhost")
         port = int(os.environ.get("CHROMA_PORT", "8000"))
-        timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+        try:
+            timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+        except ValueError:
+            logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
+            timeout_ms = 100
         _client = HttpClient(host=host, port=port)
         try:
             if hasattr(_client, "_server") and hasattr(_client._server, "_session"):
@@ -79,7 +83,7 @@ class SearchHit(BaseModel):
     """Vector search result."""
 
     text: str
-    score: float
+    distance: float = Field(..., description="Cosine distance; lower is more similar")
     ts: float | None = None
     role: str | None = None
 
@@ -111,7 +115,11 @@ async def search(thread_id: str, query: str, k: int = 8) -> list[SearchHit]:
 
     try:
         col = _get_collection()
-        timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+        try:
+            timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+        except ValueError:
+            logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
+            timeout_ms = 100
         with anyio.fail_after(timeout_ms / 1000):
             res: QueryResult = await anyio.to_thread.run_sync(
                 lambda: col.query(
@@ -133,7 +141,7 @@ async def search(thread_id: str, query: str, k: int = 8) -> list[SearchHit]:
         results.append(
             SearchHit(
                 text=doc,
-                score=dists[i],
+                distance=dists[i],
                 ts=meta.get("ts"),
                 role=meta.get("role"),
             )
