@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import AsyncGenerator, List
 import logging
 import asyncio
+from queue import SimpleQueue
+import io
 from uuid import UUID, uuid4
 import time
 import anyio
@@ -33,12 +35,8 @@ logger = logging.getLogger(__name__)
 THREAD_ID_HEADER = "X-Thread-ID"
 
 
-async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str, None]:
-    """Execute the graph and yield the assistant reply token by token.
-
-    The entire response is buffered server-side so we can persist it to
-    SQLite and Chroma after streaming completes.
-    """
+def _build_langgraph_state(prompt: str) -> dict:
+    """Return LangGraph input state for *prompt* with timestamp and system text."""
 
     prompts_path = Path(__file__).parent.parent / "prompts" / "root.system.md"
     try:
@@ -51,23 +49,41 @@ async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str,
     if system_text:
         messages.append(SystemMessage(content=system_text))
     messages.append(HumanMessage(content=prompt, additional_kwargs={"timestamp": now}))
-    user_state = {"messages": messages}
+    return {"messages": messages}
+
+
+async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str, None]:
+    """Execute the graph and yield the assistant reply token by token."""
+
+    user_state = _build_langgraph_state(prompt)
 
     loop = asyncio.get_running_loop()
+    q: SimpleQueue[str | None] = SimpleQueue()
 
-    def _run_sync() -> List[str]:
-        latest_tokens: List[str] = []
+    def _run_sync() -> str:
+        latest = ""
         cfg = {"configurable": {"thread_id": thread_id}}
         for step in graph.stream(user_state, cfg):
             msgs: List | None = step.get("llm", {}).get("messages")
             if msgs:
-                latest_tokens = list(msgs[-1].content)
-        return latest_tokens
+                current = msgs[-1].content
+                for ch in current[len(latest) :]:
+                    loop.call_soon_threadsafe(q.put, ch)
+                latest = current
+        loop.call_soon_threadsafe(q.put, None)
+        return latest
 
-    tokens: List[str] = await loop.run_in_executor(None, _run_sync)
-    assistant_buffer = "".join(tokens)
-    for ch in tokens:
+    future = loop.run_in_executor(None, _run_sync)
+    buffer = io.StringIO()
+    while True:
+        ch = await asyncio.to_thread(q.get)
+        if ch is None:
+            break
+        buffer.write(ch)
         yield ch
+
+    assistant_buffer = buffer.getvalue()
+    await future
 
     # Persist user and assistant messages after streaming completes
     user_msg = StoredMsg(
@@ -88,8 +104,9 @@ async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str,
     await sqlite.insert(sqlite.ChatMessage(**user_msg.model_dump()))
     await sqlite.insert(sqlite.ChatMessage(**assistant_msg.model_dump()))
     try:
-        await anyio.to_thread.run_sync(save_message, user_msg)
-        await anyio.to_thread.run_sync(save_message, assistant_msg)
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(anyio.to_thread.run_sync, save_message, user_msg)
+            tg.start_soon(anyio.to_thread.run_sync, save_message, assistant_msg)
     except Exception:
         logger.warning("Chroma save failed", exc_info=True)
 

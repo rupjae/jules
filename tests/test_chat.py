@@ -19,12 +19,12 @@ def _decode(body: str) -> str:
     )
 
 
-class EchoLLM:
-    def __init__(self, *_: object, **__: object) -> None:
-        pass
-
-    def invoke(self, messages):
-        return main_graph.AIMessage(content="pong")
+class ChunkGraph:
+    def stream(self, *_: object, **__: object):
+        acc = ""
+        for ch in "pong":
+            acc += ch
+            yield {"llm": {"messages": [main_graph.AIMessage(content=acc)]}}
 
 
 @pytest.fixture()
@@ -50,8 +50,7 @@ def test_stream_persists(
     app = FastAPI()
     app.include_router(chat_router.router)
 
-    monkeypatch.setattr(main_graph, "ChatOpenAI", EchoLLM)
-    app.state.graph = main_graph.build_graph()
+    app.state.graph = ChunkGraph()
 
     with TestClient(app) as client:
         before_sql = anyio.run(sqlite.count)
