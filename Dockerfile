@@ -35,8 +35,11 @@ FROM base AS production
 WORKDIR /app
 
 # Python dependencies
-COPY backend/requirements.txt ./requirements.txt
-RUN pip install -r requirements.txt
+COPY pyproject.toml poetry.lock ./
+RUN pip install poetry poetry-plugin-export \
+    && poetry export --without-hashes -f requirements.txt -o requirements.txt \
+    && pip install --no-cache-dir -r requirements.txt \
+    && rm requirements.txt
 
 # Copy backend code
 COPY backend/app ./app
