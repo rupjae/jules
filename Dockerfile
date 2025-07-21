@@ -43,7 +43,9 @@ RUN pip install poetry poetry-plugin-export \
 
 # Copy backend code
 COPY backend/app ./app
-# All backend code (FastAPI package and helpers) is already inside backend/app
+# Support local helper packages
+COPY db ./db
+COPY jules ./jules
 
 # Copy exported static site from the previous stage
 COPY --from=frontend-builder /workspace/frontend/out ./static

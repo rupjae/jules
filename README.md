@@ -90,6 +90,9 @@ Open your browser:
 • http://localhost:8000  → FastAPI API (and the static build when dev server is stopped)
 • http://chroma:8000  → Chroma vector database HTTP API (Docker network)
 
+The compose file mounts `backend/app`, `db`, and `jules` into the container so
+any local changes reload automatically.
+
 ### Vector Store
 
 The `chroma` service acts as the vector store side-car.  Data persists under
