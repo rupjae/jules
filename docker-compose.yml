@@ -24,8 +24,8 @@ services:
       # Persist Chroma data locally
       - ./.chroma-data:/chroma/.chroma
     healthcheck:
-      start_period: 5s
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/api/v1/heartbeat || exit 1"]
       interval: 10s
-      timeout: 2s
-      retries: 6
+      timeout: 3s
+      retries: 10
+      start_period: 15s
