@@ -13,7 +13,7 @@ import asyncio
 from uuid import UUID, uuid4
 import time
 import anyio
-from db.chroma import save_message, StoredMsg
+from db.chroma import save_message, StoredMsg, SearchHit
 from db import sqlite
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -193,7 +193,7 @@ async def post_message(
     return {"id": msg.id}
 
 
-@router.get("/chat/search")
+@router.get("/chat/search", response_model=list[SearchHit])
 async def chat_search(
     request: Request,
     thread_id: str,
@@ -206,7 +206,7 @@ async def chat_search(
     from db.chroma import search as chroma_search
 
     try:
-        hits = chroma_search(thread_id, query, k=8)
+        hits = await chroma_search(thread_id, query, k=8)
     except Exception:
         raise HTTPException(status_code=503, detail="vector search unavailable")
 

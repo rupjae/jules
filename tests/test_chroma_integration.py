@@ -11,9 +11,9 @@ from db import chroma, sqlite
 
 
 class DummyEmbed:
-    def __call__(self, texts: list[str]) -> list[list[float]]:
+    def __call__(self, input: list[str]) -> list[list[float]]:
         vecs: list[list[float]] = []
-        for t in texts:
+        for t in input:
             if "apple" in t or "fruit" in t:
                 vecs.append([1.0, 0.0, 0.0])
             else:
@@ -72,14 +72,14 @@ def test_search_semantic(chroma_ephemeral: None) -> None:
         r = client.get("/api/chat/search", params={"thread_id": "t1", "query": "fruit"})
         assert r.status_code == 200
         hits = r.json()
-        assert any(h["content"] == "apple" for h in hits)
+        assert any(h["text"] == "apple" for h in hits)
 
 
 def test_search_chroma_down(monkeypatch: pytest.MonkeyPatch) -> None:
     app = FastAPI()
     app.include_router(chat_router.router)
 
-    def boom(*_: object, **__: object) -> None:
+    async def boom(*_: object, **__: object) -> None:
         raise RuntimeError("down")
 
     monkeypatch.setattr(chroma, "search", boom)

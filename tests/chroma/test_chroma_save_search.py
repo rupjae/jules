@@ -5,6 +5,7 @@ import time
 from collections.abc import Generator
 
 import chromadb
+import anyio
 import pytest
 
 from db import chroma
@@ -40,7 +41,7 @@ def chroma_fake_embed(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, 
 def test_chroma_save_search(chroma_fake_embed: None) -> None:
     msg = chroma.StoredMsg(thread_id="t1", role="user", content="hello", ts=time.time())
     chroma.save_message(msg)
-    res = chroma.search("t1", "hello", k=1)
+    res = anyio.run(chroma.search, "t1", "hello", 1)
     assert res
-    assert res[0]["content"] == "hello"
-    assert res[0]["score"] <= 0.25
+    assert res[0].text == "hello"
+    assert res[0].score <= 0.25
