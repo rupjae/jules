@@ -14,7 +14,7 @@ from chromadb.api.types import EmbeddingFunction, QueryResult
 from typing import Any
 from chromadb.utils import embedding_functions
 from typing import TypedDict, cast
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from jules.logging import trace
 
@@ -40,7 +40,7 @@ def _get_embedding() -> EmbeddingFunction[Any]:
         emb_cls = getattr(embedding_functions, "OpenAIEmbeddingFunction")
         _embedding = emb_cls(
             model_name="text-embedding-3-large",
-            api_key=os.environ["OPENAI_API_KEY"],
+            api_key=os.getenv("OPENAI_API_KEY", ""),
         )
     return _embedding
 
@@ -60,11 +60,11 @@ def _get_collection() -> Collection:
 class StoredMsg(BaseModel):
     """Chat message persisted to Chroma."""
 
-    id: str = uuid4().hex
+    id: str = Field(default_factory=lambda: uuid4().hex)
     thread_id: str
     role: str
     content: str
-    ts: float = time.time()
+    ts: float = Field(default_factory=time.time)
 
 
 class SearchEntry(TypedDict, total=False):
@@ -72,7 +72,7 @@ class SearchEntry(TypedDict, total=False):
 
     id: str
     content: str
-    distance: float
+    score: float
     thread_id: str
     role: str
     ts: float
@@ -124,7 +124,7 @@ def search(thread_id: str, query: str, k: int = 8) -> list[SearchEntry]:
         entry: SearchEntry = {
             "id": ids[i],
             "content": doc,
-            "distance": dists[i],
+            "score": dists[i],
         }
         entry.update(cast(SearchEntry, meta))
         results.append(entry)
@@ -135,5 +135,4 @@ __all__ = [
     "StoredMsg",
     "save_message",
     "search",
-    "embedding_functions",
 ]

@@ -15,6 +15,9 @@ def chroma_fake_embed(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, 
     """Patch embedding to deterministic vectors and HttpClient."""
 
     class DummyEmbed:
+        def __init__(self) -> None:
+            pass
+
         def __call__(self, input: list[str]) -> list[list[float]]:
             vecs: list[list[float]] = []
             for t in input:
@@ -24,7 +27,7 @@ def chroma_fake_embed(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, 
             return vecs
 
     monkeypatch.setattr(
-        chroma.embedding_functions,
+        chroma.embedding_functions,  # type: ignore[attr-defined]
         "OpenAIEmbeddingFunction",
         lambda model_name, api_key: DummyEmbed(),
     )
@@ -40,4 +43,4 @@ def test_chroma_save_search(chroma_fake_embed: None) -> None:
     res = chroma.search("t1", "hello", k=1)
     assert res
     assert res[0]["content"] == "hello"
-    assert res[0]["distance"] <= 0.25
+    assert res[0]["score"] <= 0.25
