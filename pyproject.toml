@@ -14,7 +14,7 @@ langchain = "0.3.26"
 langchain-openai = "0.3.28"
 langgraph = "0.5.3"
 langchain-community = "0.3.27"
-chromadb = "0.5.23"
+chromadb = "==0.5.23"
 sse-starlette = "1.6.1"
 aiohttp = "3.12.14"
 pydantic-settings = "2.10.1"
@@ -27,6 +27,7 @@ pip-audit = "2.7.1"
 pre-commit = "4.2.0"
 pytest = "8.2.2"
 import-linter = "1.11.1"
+pytest-docker = "3.1.1"
 
 [tool.importlinter]
 contracts = ["importlinter_contracts.greenfield:Contract"]

@@ -10,6 +10,7 @@ from uuid import uuid4
 import anyio
 
 from chromadb import HttpClient
+from chromadb.config import Settings
 import httpx
 from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
@@ -37,7 +38,7 @@ def _get_client() -> ClientAPI:
         except ValueError:
             logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
             timeout_ms = 100
-        _client = HttpClient(host=host, port=port)
+        _client = HttpClient(host=host, port=port, settings=Settings(anonymized_telemetry=False))
         try:
             if hasattr(_client, "_server") and hasattr(_client._server, "_session"):
                 _client._server._session.timeout = httpx.Timeout(timeout_ms / 1000)
