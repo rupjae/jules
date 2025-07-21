@@ -37,6 +37,7 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
 1. Copy `.env.example` → `.env` and fill in:
    - `OPENAI_API_KEY=<your OpenAI key>` (required)
    - `JULES_AUTH_TOKEN=<optional bearer token>` (commented out by default; leave unset to disable auth)
+   - `CHROMA_HOST=chroma` target Chroma service host
    - `CHROMA_TIMEOUT_MS=100` optional request timeout
 2. Install Python deps & run backend:
 
@@ -59,7 +60,15 @@ Then open http://localhost:8000 to chat with **Jules**.
   the `X-Thread-ID` response header provides the generated session ID.  Include the same
   `thread_id` (query or `X-Thread-ID` header) on subsequent calls to continue the conversation.
 - **POST /api/chat/message**
-  Persist a single chat message to SQLite and Chroma. Parameters `thread_id`, `role`, and `content` are required.
+  Persist a single chat message to SQLite and Chroma. Accepts a JSON body `{"thread_id": "<uuid>", "role": "user|assistant|system|tool", "content": "<text>"}` (max 32k chars).
+  The legacy query-parameter variant remains available at `/api/chat/message/legacy` and will be removed after v0.5.
+  Example:
+  ```bash
+  curl -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"thread_id":"123e4567-e89b-12d3-a456-426614174000","role":"user","content":"hi"}' \
+    http://localhost:8000/api/chat/message
+  ```
 - **GET /api/chat/history?thread_id=<id>**
   Returns the full conversation history as JSON:
   ```

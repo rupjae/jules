@@ -45,9 +45,10 @@ def test_dual_write(chroma_ephemeral: None) -> None:
     with TestClient(app) as client:
         before_sql = anyio.run(_sqlite_count)
         before_chroma = chroma._get_collection().count()
+        tid = "550e8400-e29b-41d4-a716-446655440000"
         r = client.post(
             "/api/chat/message",
-            params={"thread_id": "t1", "role": "user", "content": "hi"},
+            json={"thread_id": tid, "role": "user", "content": "hi"},
         )
         assert r.status_code == 200
         after_sql = anyio.run(_sqlite_count)
@@ -61,15 +62,16 @@ def test_search_semantic(chroma_ephemeral: None) -> None:
     app.include_router(chat_router.router)
 
     with TestClient(app) as client:
+        tid = "550e8400-e29b-41d4-a716-446655440001"
         client.post(
             "/api/chat/message",
-            params={"thread_id": "t1", "role": "user", "content": "apple"},
+            json={"thread_id": tid, "role": "user", "content": "apple"},
         )
         client.post(
             "/api/chat/message",
-            params={"thread_id": "t1", "role": "user", "content": "fruit"},
+            json={"thread_id": tid, "role": "user", "content": "fruit"},
         )
-        r = client.get("/api/chat/search", params={"thread_id": "t1", "query": "fruit"})
+        r = client.get("/api/chat/search", params={"thread_id": tid, "query": "fruit"})
         assert r.status_code == 200
         hits = r.json()
         assert any(h["text"] == "apple" for h in hits)
@@ -85,6 +87,25 @@ def test_search_chroma_down(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(chroma, "search", boom)
 
     with TestClient(app) as client:
-        r = client.get("/api/chat/search", params={"thread_id": "t1", "query": "x"})
+        r = client.get(
+            "/api/chat/search",
+            params={"thread_id": "550e8400-e29b-41d4-a716-446655440002", "query": "x"},
+        )
         assert r.status_code == 503
         assert r.json() == {"detail": "vector search unavailable"}
+
+
+def test_message_legacy_route(chroma_ephemeral: None) -> None:
+    app = FastAPI()
+    app.include_router(chat_router.router)
+
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/chat/message/legacy",
+            params={
+                "thread_id": "550e8400-e29b-41d4-a716-446655440003",
+                "role": "user",
+                "content": "hi",
+            },
+        )
+        assert r.status_code == 200
