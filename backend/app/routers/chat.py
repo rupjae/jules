@@ -15,6 +15,7 @@ import time
 import anyio
 from db.chroma import save_message, StoredMsg, SearchHit
 from db import sqlite
+from ..schemas import ChatMessageIn
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langchain.schema import HumanMessage, SystemMessage
@@ -167,30 +168,40 @@ async def chat_history(request: Request, settings: Settings = Depends(get_settin
 
 @router.post("/chat/message")
 async def post_message(
+    msg: ChatMessageIn,
     request: Request,
-    thread_id: str,
-    role: str,
-    content: str,
     settings: Settings = Depends(get_settings),
 ):
     """Persist a message and index it in Chroma."""
 
     await _authorize(request, settings)
 
-    msg = StoredMsg(
+    stored = StoredMsg(
         id=str(uuid4()),
-        thread_id=thread_id,
-        role=role,
-        content=content,
+        thread_id=str(msg.thread_id),
+        role=msg.role,
+        content=msg.content,
         ts=time.time(),
     )
-    await sqlite.insert(sqlite.ChatMessage(**msg.model_dump()))
+    await sqlite.insert(sqlite.ChatMessage(**stored.model_dump()))
     try:
-        await anyio.to_thread.run_sync(save_message, msg)
+        await anyio.to_thread.run_sync(save_message, stored)
     except Exception:
         # Swallow vector store errors
         logger.warning("Chroma save failed", exc_info=True)
-    return {"id": msg.id}
+    return {"id": stored.id}
+
+
+@router.post("/chat/message/legacy", include_in_schema=False)
+async def post_message_legacy(
+    request: Request,
+    thread_id: str,
+    role: str,
+    content: str,
+    settings: Settings = Depends(get_settings),
+):
+    payload = ChatMessageIn(thread_id=thread_id, role=role, content=content)
+    return await post_message(payload, request, settings)
 
 
 @router.get("/chat/search", response_model=list[SearchHit])

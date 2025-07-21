@@ -30,7 +30,7 @@ _embedding: EmbeddingFunction[Any] | None = None
 def _get_client() -> ClientAPI:
     global _client
     if _client is None:
-        host = os.environ.get("CHROMA_HOST", "localhost")
+        host = os.environ.get("CHROMA_HOST", "chroma")
         port = int(os.environ.get("CHROMA_PORT", "8000"))
         try:
             timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
