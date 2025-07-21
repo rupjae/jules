@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/
 WORKDIR /app
 
 COPY pyproject.toml poetry.lock ./
-RUN pip install poetry \
+RUN pip install poetry poetry-plugin-export \
     && poetry export --without-hashes -f requirements.txt -o requirements.txt \
     && pip install --no-cache-dir -r requirements.txt \
     && rm requirements.txt
