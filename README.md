@@ -37,6 +37,7 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
 1. Copy `.env.example` → `.env` and fill in:
    - `OPENAI_API_KEY=<your OpenAI key>` (required)
    - `JULES_AUTH_TOKEN=<optional bearer token>` (commented out by default; leave unset to disable auth)
+   - `CHROMA_TIMEOUT_MS=100` optional request timeout
 2. Install Python deps & run backend:
 
 ```bash
@@ -57,6 +58,8 @@ Then open http://localhost:8000 to chat with **Jules**.
   Streams chat completions via Server-Sent Events.  On the first request for a new thread,
   the `X-Thread-ID` response header provides the generated session ID.  Include the same
   `thread_id` (query or `X-Thread-ID` header) on subsequent calls to continue the conversation.
+- **POST /api/chat/message**
+  Persist a single chat message to SQLite and Chroma. Parameters `thread_id`, `role`, and `content` are required.
 - **GET /api/chat/history?thread_id=<id>**
   Returns the full conversation history as JSON:
   ```
@@ -67,6 +70,9 @@ Then open http://localhost:8000 to chat with **Jules**.
     ...
   ]
   ```
+- **GET /api/chat/search?thread_id=<id>&query=<text>**
+  Vector similarity search within a thread backed by Chroma. Returns a list of
+  objects `[{'text': str, 'distance': float, 'timestamp': float | null, 'role': str | null}]`.
 The backend will return the generated `X-Thread-ID` header on the very first
 request so that clients can persist it.  Subsequent calls should repeat the
 same ID either via the `X-Thread-ID` header or as a `thread_id` query

@@ -7,13 +7,15 @@ import os
 import time
 from uuid import uuid4
 
+import anyio
+
 from chromadb import HttpClient
+import httpx
 from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import EmbeddingFunction, QueryResult
 from typing import Any
 from chromadb.utils import embedding_functions
-from typing import TypedDict, cast
 from pydantic import BaseModel, Field
 
 from jules.logging import trace
@@ -30,7 +32,17 @@ def _get_client() -> ClientAPI:
     if _client is None:
         host = os.environ.get("CHROMA_HOST", "localhost")
         port = int(os.environ.get("CHROMA_PORT", "8000"))
+        try:
+            timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+        except ValueError:
+            logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
+            timeout_ms = 100
         _client = HttpClient(host=host, port=port)
+        try:
+            if hasattr(_client, "_server") and hasattr(_client._server, "_session"):
+                _client._server._session.timeout = httpx.Timeout(timeout_ms / 1000)
+        except Exception:
+            logger.warning("Failed to configure Chroma timeout", exc_info=True)
     return _client
 
 
@@ -67,15 +79,13 @@ class StoredMsg(BaseModel):
     ts: float = Field(default_factory=time.time)
 
 
-class SearchEntry(TypedDict, total=False):
-    """Result item returned from :func:`search`."""
+class SearchHit(BaseModel):
+    """Vector search result."""
 
-    id: str
-    content: str
-    score: float
-    thread_id: str
-    role: str
-    ts: float
+    text: str
+    distance: float = Field(..., description="Cosine distance; lower is more similar")
+    ts: float | None = None
+    role: str | None = None
 
 
 @trace
@@ -100,34 +110,42 @@ def save_message(msg: StoredMsg) -> None:
 
 
 @trace
-def search(thread_id: str, query: str, k: int = 8) -> list[SearchEntry]:
+async def search(thread_id: str, query: str, k: int = 8) -> list[SearchHit]:
     """Return the closest messages for *thread_id* to *query*."""
 
     try:
         col = _get_collection()
-        res: QueryResult = col.query(
-            query_texts=[query],
-            n_results=k,
-            where={"thread_id": thread_id},
-        )
+        try:
+            timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+        except ValueError:
+            logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
+            timeout_ms = 100
+        with anyio.fail_after(timeout_ms / 1000):
+            res: QueryResult = await anyio.to_thread.run_sync(
+                lambda: col.query(
+                    query_texts=[query],
+                    n_results=k,
+                    where={"thread_id": thread_id},
+                )
+            )
     except Exception:
         logger.warning("Chroma search failed", exc_info=True)
         return []
 
     docs = (res.get("documents") or [[]])[0]
-    ids = (res.get("ids") or [[]])[0]
     dists = (res.get("distances") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
-    results: list[SearchEntry] = []
+    results: list[SearchHit] = []
     for i, doc in enumerate(docs):
         meta = metas[i] if i < len(metas) else {}
-        entry: SearchEntry = {
-            "id": ids[i],
-            "content": doc,
-            "score": dists[i],
-        }
-        entry.update(cast(SearchEntry, meta))
-        results.append(entry)
+        results.append(
+            SearchHit(
+                text=doc,
+                distance=dists[i],
+                ts=meta.get("ts"),
+                role=meta.get("role"),
+            )
+        )
     return results
 
 
@@ -135,4 +153,5 @@ __all__ = [
     "StoredMsg",
     "save_message",
     "search",
+    "SearchHit",
 ]

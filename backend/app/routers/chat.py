@@ -8,8 +8,13 @@ conversation context using the configured LangGraph checkpoint saver.
 from __future__ import annotations
 
 from typing import AsyncGenerator, List
+import logging
 import asyncio
 from uuid import UUID, uuid4
+import time
+import anyio
+from db.chroma import save_message, StoredMsg, SearchHit
+from db import sqlite
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langchain.schema import HumanMessage, SystemMessage
@@ -22,6 +27,7 @@ import datetime
 
 router = APIRouter(prefix="/api")
 
+logger = logging.getLogger(__name__)
 THREAD_ID_HEADER = "X-Thread-ID"
 
 
@@ -112,14 +118,14 @@ async def chat_endpoint(
     # Attach the (possibly freshly generated) thread id so clients can persist it.
     return EventSourceResponse(generator(), headers={"X-Thread-ID": thread_id})
 
+
 @router.get("/chat/history")
-async def chat_history(
-    request: Request, settings: Settings = Depends(get_settings)
-):
+async def chat_history(request: Request, settings: Settings = Depends(get_settings)):
     """Return the full message history for a given thread_id."""
     await _authorize(request, settings)
-    raw_id = (request.headers.get(THREAD_ID_HEADER)
-              or request.query_params.get("thread_id"))
+    raw_id = request.headers.get(THREAD_ID_HEADER) or request.query_params.get(
+        "thread_id"
+    )
     if raw_id is None:
         raise HTTPException(status_code=400, detail="thread_id is required")
     try:
@@ -137,60 +143,71 @@ async def chat_history(
             cp = tup.checkpoint
             if isinstance(cp, dict):
                 # channel_values holds per-channel state
-                channel_vals = cp.get('channel_values', {})
-                msgs = channel_vals.get('messages', []) or []
+                channel_vals = cp.get("channel_values", {})
+                msgs = channel_vals.get("messages", []) or []
             else:
-                msgs = getattr(cp, 'messages', []) or []
-    except Exception as e:
+                msgs = getattr(cp, "messages", []) or []
+    except Exception:
         # error loading history, return empty
         msgs = []
     # Convert to serializable form
     result = []
-    from langchain.schema import AIMessage, HumanMessage
+    from langchain.schema import AIMessage
+
     for m in msgs:
         # determine sender and extract timestamp if present
-        sender = 'assistant' if isinstance(m, AIMessage) else 'user'
-        ts = getattr(m, 'additional_kwargs', {}).get('timestamp')
-        entry: dict = {'sender': sender, 'content': m.content}
+        sender = "assistant" if isinstance(m, AIMessage) else "user"
+        ts = getattr(m, "additional_kwargs", {}).get("timestamp")
+        entry: dict = {"sender": sender, "content": m.content}
         if ts is not None:
-            entry['timestamp'] = ts
+            entry["timestamp"] = ts
         result.append(entry)
     return result
 
 
-@router.get("/chat/search")
+@router.post("/chat/message")
+async def post_message(
+    request: Request,
+    thread_id: str,
+    role: str,
+    content: str,
+    settings: Settings = Depends(get_settings),
+):
+    """Persist a message and index it in Chroma."""
+
+    await _authorize(request, settings)
+
+    msg = StoredMsg(
+        id=str(uuid4()),
+        thread_id=thread_id,
+        role=role,
+        content=content,
+        ts=time.time(),
+    )
+    await sqlite.insert(sqlite.ChatMessage(**msg.model_dump()))
+    try:
+        await anyio.to_thread.run_sync(save_message, msg)
+    except Exception:
+        # Swallow vector store errors
+        logger.warning("Chroma save failed", exc_info=True)
+    return {"id": msg.id}
+
+
+@router.get("/chat/search", response_model=list[SearchHit])
 async def chat_search(
     request: Request,
-    q: str,
-    settings: Settings = Depends(get_settings)
+    thread_id: str,
+    query: str,
+    settings: Settings = Depends(get_settings),
 ):
-    """Search across all thread histories for messages containing a substring."""
+    """Vector search for messages within *thread_id*."""
+
     await _authorize(request, settings)
-    saver = request.app.state.checkpointer
-    conn = saver.conn  # sqlite3.Connection
-    cur = conn.cursor()
-    # get all thread IDs
-    cur.execute("SELECT DISTINCT thread_id FROM checkpoints")
-    threads = [row[0] for row in cur.fetchall()]
-    results: list[dict] = []
-    from langchain.schema import AIMessage, HumanMessage
-    for tid in threads:
-        tup = saver.get_tuple({"configurable": {"thread_id": tid}})
-        if not tup:
-            continue
-        cp = tup.checkpoint
-        msgs = []
-        if isinstance(cp, dict):
-            channel_vals = cp.get('channel_values', {})
-            msgs = channel_vals.get('messages', []) or []
-        else:
-            msgs = getattr(cp, 'messages', []) or []
-        for m in msgs:
-            if q.lower() in m.content.lower():
-                sender = 'assistant' if isinstance(m, AIMessage) else 'user'
-                ts = getattr(m, 'additional_kwargs', {}).get('timestamp')
-                entry: dict = {'thread_id': tid, 'sender': sender, 'content': m.content}
-                if ts is not None:
-                    entry['timestamp'] = ts
-                results.append(entry)
-    return results
+    from db.chroma import search as chroma_search
+
+    try:
+        hits = await chroma_search(thread_id, query, k=8)
+    except Exception:
+        raise HTTPException(status_code=503, detail="vector search unavailable")
+
+    return hits
