@@ -9,11 +9,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - `/api/chat/message` now accepts a JSON body. The query parameter version lives under `/api/chat/message/legacy` until v0.5.
+- Allowed chat roles expanded to `user`, `assistant`, `system`, and `tool` with a 32k content limit.
 - Default `CHROMA_HOST` is now `chroma` and set in `docker-compose.yml`.
 
 
 ### Fixed
 - Agent now recalls prior turns when the same `X-Thread-ID` is reused.
+- Chroma container health check now uses `nc` instead of missing `wget`.
 - Conversation continues when the same `thread_id` is passed as a query parameter.
 - Added `@types/uuid` to resolve TypeScript build error.
 

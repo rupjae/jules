@@ -60,7 +60,7 @@ Then open http://localhost:8000 to chat with **Jules**.
   the `X-Thread-ID` response header provides the generated session ID.  Include the same
   `thread_id` (query or `X-Thread-ID` header) on subsequent calls to continue the conversation.
 - **POST /api/chat/message**
-  Persist a single chat message to SQLite and Chroma. Accepts a JSON body `{"thread_id": "<uuid>", "role": "user|assistant", "content": "<text>"}`.
+  Persist a single chat message to SQLite and Chroma. Accepts a JSON body `{"thread_id": "<uuid>", "role": "user|assistant|system|tool", "content": "<text>"}` (max 32k chars).
   The legacy query-parameter variant remains available at `/api/chat/message/legacy` and will be removed after v0.5.
   Example:
   ```bash
