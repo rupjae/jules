@@ -8,6 +8,7 @@ import time
 from uuid import uuid4
 
 from chromadb import HttpClient
+import httpx
 from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import EmbeddingFunction, QueryResult
@@ -30,7 +31,13 @@ def _get_client() -> ClientAPI:
     if _client is None:
         host = os.environ.get("CHROMA_HOST", "localhost")
         port = int(os.environ.get("CHROMA_PORT", "8000"))
+        timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
         _client = HttpClient(host=host, port=port)
+        try:
+            if hasattr(_client, "_server") and hasattr(_client._server, "_session"):
+                _client._server._session.timeout = httpx.Timeout(timeout_ms / 1000)
+        except Exception:
+            logger.warning("Failed to configure Chroma timeout", exc_info=True)
     return _client
 
 
