@@ -13,8 +13,10 @@ jobs:
           cache: 'pip'
       - name: Install tools
         run: |
-          pip install pip-audit pip-licenses
-          pip install -r backend/requirements.txt
+          pip install pip-audit pip-licenses poetry
+          poetry export --without-hashes -f requirements.txt -o requirements.txt
+          pip install -r requirements.txt
+          rm requirements.txt
       - name: Security audit
         run: pip-audit --strict
       - name: License audit

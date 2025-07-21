@@ -15,8 +15,8 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
 │   │   ├── main.py
 │   │   └── routers/
 │   │       └── chat.py
-│   ├── requirements.txt
-│   └── Dockerfile
+│   ├── Dockerfile
+│   └── (Python dependencies managed via Poetry)
 ├── frontend/         # Next.js (TypeScript) client
 │   ├── package.json
 │   ├── next.config.js
@@ -42,7 +42,8 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install poetry
+poetry install --no-interaction --no-root
 uvicorn app.main:app --reload --port 8000
 ```
 
