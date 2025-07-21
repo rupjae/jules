@@ -55,10 +55,12 @@ persists across restarts.
 Then open http://localhost:8000 to chat with **Jules**.
 
 ### API Endpoints
-- **POST /api/chat?thread_id=<id>&message=<text>**
+- **GET /api/chat?thread_id=<id>&message=<text>**
   Streams chat completions via Server-Sent Events.  On the first request for a new thread,
   the `X-Thread-ID` response header provides the generated session ID.  Include the same
   `thread_id` (query or `X-Thread-ID` header) on subsequent calls to continue the conversation.
+  Once the assistant reply finishes streaming, both the user prompt and the response are
+  automatically persisted to SQLite and Chroma so they appear in subsequent searches.
 - **POST /api/chat/message**
   Persist a single chat message to SQLite and Chroma. Accepts a JSON body `{"thread_id": "<uuid>", "role": "user|assistant|system|tool", "content": "<text>"}` (max 32k chars).
   The legacy query-parameter variant remains available at `/api/chat/message/legacy` and will be removed after v0.5.

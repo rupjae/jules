@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Green-field enforcement via CI and pre-commit.
+- Streaming `/api/chat` exchanges are now persisted to Chroma after the
+  assistant reply completes.
 
 ### Changed
 - `/api/chat/message` now accepts a JSON body. The query parameter version lives under `/api/chat/message/legacy` until v0.5.
