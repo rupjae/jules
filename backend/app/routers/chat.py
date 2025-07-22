@@ -7,7 +7,7 @@ conversation context using the configured LangGraph checkpoint saver.
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Optional
 import logging
 import asyncio
 import io
@@ -18,7 +18,7 @@ from db.chroma import save_message, StoredMsg, SearchHit
 from db import sqlite
 from ..schemas import ChatMessageIn
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from langchain.schema import HumanMessage, SystemMessage
 from pathlib import Path
 from sse_starlette.sse import EventSourceResponse
@@ -251,18 +251,44 @@ async def post_message_legacy(
 @router.get("/chat/search", response_model=list[SearchHit])
 async def chat_search(
     request: Request,
-    thread_id: str,
     query: str,
+    thread_id: Optional[UUID] = Query(
+        None,
+        description="Limit to a conversation; omit for global",
+    ),
+    min_similarity: float | None = Query(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="If set, drop hits below this similarity (0-1).",
+    ),
     settings: Settings = Depends(get_settings),
 ):
-    """Vector search for messages within *thread_id*."""
+    """Vector search for messages.
+
+    Omit ``thread_id`` for a global search. Each hit now includes a
+    ``similarity`` score derived from cosine distance and can be filtered via
+    ``min_similarity``. May return fewer than ``top_k`` hits when filtering is
+    applied.
+    """
 
     await _authorize(request, settings)
     from db.chroma import search as chroma_search
 
+    where = {"thread_id": str(thread_id)} if thread_id else None
+
     try:
-        hits = await chroma_search(thread_id, query, k=8)
+        hits = await chroma_search(where, query, k=8)
     except Exception:
         raise HTTPException(status_code=503, detail="vector search unavailable")
 
-    return hits
+    results: list[dict] = []
+    for hit in hits:
+        dist = max(hit.distance, 1e-9)  # protect against division by zero
+        sim = 1 / (1 + dist)
+        if min_similarity is None or sim >= min_similarity:
+            item = hit.model_dump()
+            item["similarity"] = sim
+            results.append(item)
+
+    return results

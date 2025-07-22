@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
   assistant reply completes.
 - SSE responses now emit tokens incrementally and write to Chroma concurrently.
   Closes WO-4.
+- `/api/chat/search`
+    - `thread_id` now optional (global search)
+    - NEW: returns `similarity` (0-1) and accepts `min_similarity` filter
 
 ### Changed
 - `/api/chat/message` now accepts a JSON body. The query parameter version lives under `/api/chat/message/legacy` until v0.5.

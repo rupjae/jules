@@ -38,7 +38,9 @@ def _get_client() -> ClientAPI:
         except ValueError:
             logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
             timeout_ms = 100
-        _client = HttpClient(host=host, port=port, settings=Settings(anonymized_telemetry=False))
+        _client = HttpClient(
+            host=host, port=port, settings=Settings(anonymized_telemetry=False)
+        )
         try:
             if hasattr(_client, "_server") and hasattr(_client._server, "_session"):
                 _client._server._session.timeout = httpx.Timeout(timeout_ms / 1000)
@@ -85,6 +87,9 @@ class SearchHit(BaseModel):
 
     text: str
     distance: float = Field(..., description="Cosine distance; lower is more similar")
+    similarity: float | None = Field(
+        None, ge=0.0, le=1.0, description="Monotonic similarity derived from distance"
+    )
     ts: float | None = None
     role: str | None = None
 
@@ -111,8 +116,13 @@ def save_message(msg: StoredMsg) -> None:
 
 
 @trace
-async def search(thread_id: str, query: str, k: int = 8) -> list[SearchHit]:
-    """Return the closest messages for *thread_id* to *query*."""
+async def search(
+    where: dict[str, str] | None, query: str, k: int = 8
+) -> list[SearchHit]:
+    """Return the closest messages to *query* filtered by *where*.
+
+    Results include ``similarity`` in addition to raw ``distance``.
+    """
 
     try:
         col = _get_collection()
@@ -122,13 +132,14 @@ async def search(thread_id: str, query: str, k: int = 8) -> list[SearchHit]:
             logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
             timeout_ms = 100
         with anyio.fail_after(timeout_ms / 1000):
-            res: QueryResult = await anyio.to_thread.run_sync(
-                lambda: col.query(
-                    query_texts=[query],
-                    n_results=k,
-                    where={"thread_id": thread_id},
-                )
-            )
+
+            def _run_query() -> QueryResult:
+                kwargs = {"query_texts": [query], "n_results": k}
+                if where:
+                    kwargs["where"] = where
+                return col.query(**kwargs)
+
+            res: QueryResult = await anyio.to_thread.run_sync(_run_query)
     except Exception:
         logger.warning("Chroma search failed", exc_info=True)
         return []
@@ -139,10 +150,14 @@ async def search(thread_id: str, query: str, k: int = 8) -> list[SearchHit]:
     results: list[SearchHit] = []
     for i, doc in enumerate(docs):
         meta = metas[i] if i < len(metas) else {}
+        dist = dists[i]
+        dist = max(dist, 1e-9)
+        similarity = 1 / (1 + dist)
         results.append(
             SearchHit(
                 text=doc,
-                distance=dists[i],
+                distance=dist,
+                similarity=similarity,
                 ts=meta.get("ts"),
                 role=meta.get("role"),
             )
