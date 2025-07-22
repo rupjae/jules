@@ -71,7 +71,7 @@ Then open http://localhost:8000 to chat with **Jules**.
     -d '{"thread_id":"123e4567-e89b-12d3-a456-426614174000","role":"user","content":"hi"}' \
     http://localhost:8000/api/chat/message
   ```
-- **GET /api/chat/history?thread_id=<id>**
+• **GET /api/chat/history?thread_id=<id>**
   Returns the full conversation history as JSON:
   ```
   > NOTE: Both `/api/chat/history` and `/api/chat/search` responses now include a `"timestamp"` field (ISO-8601 UTC) for each message.
@@ -81,7 +81,7 @@ Then open http://localhost:8000 to chat with **Jules**.
     ...
   ]
   ```
-- **GET /api/chat/search?thread_id=<id>&query=<text>**
+• **GET /api/chat/search?thread_id=<id>&query=<text>**
   Vector similarity search within a thread backed by Chroma. Returns a list of
   objects `[{'text': str, 'distance': float, 'timestamp': float | null, 'role': str | null}]`.
 The backend will return the generated `X-Thread-ID` header on the very first
