@@ -150,10 +150,14 @@ async def search(
     results: list[SearchHit] = []
     for i, doc in enumerate(docs):
         meta = metas[i] if i < len(metas) else {}
+        dist = dists[i]
+        dist = max(dist, 1e-9)
+        similarity = 1 / (1 + dist)
         results.append(
             SearchHit(
                 text=doc,
-                distance=dists[i],
+                distance=dist,
+                similarity=similarity,
                 ts=meta.get("ts"),
                 role=meta.get("role"),
             )

@@ -45,3 +45,4 @@ def test_chroma_save_search(chroma_fake_embed: None) -> None:
     assert res
     assert res[0].text == "hello"
     assert res[0].distance <= 0.25
+    assert 0.0 <= (res[0].similarity or 0.0) <= 1.0
