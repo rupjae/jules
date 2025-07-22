@@ -1,0 +1,7 @@
+[retrieval_agent]
+model = "gpt-4o-mini"
+top_k = 5
+max_tokens_packet = 150
+
+[jules]
+model = "gpt-4o"

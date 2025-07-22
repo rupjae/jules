@@ -1,0 +1,7 @@
+### Context
+{{ info_packet }}
+
+### User
+{{ user_msg }}
+
+Respond helpfully and expand details if needed.
