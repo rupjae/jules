@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import httpx
+import httpx  # type: ignore[import-not-found]
 import pytest
-import respx
+import respx  # type: ignore[import-not-found]
 
 from jules.tools import ChromaSearchTool
 
@@ -14,7 +14,7 @@ FIXTURE = [
 
 
 @pytest.mark.anyio("asyncio")
-@respx.mock
+@respx.mock  # type: ignore[misc]
 async def test_happy_path() -> None:
     route = respx.get("http://localhost:8000/api/chat/search").mock(
         return_value=httpx.Response(200, json=FIXTURE)
@@ -27,7 +27,7 @@ async def test_happy_path() -> None:
 
 
 @pytest.mark.anyio("asyncio")
-@respx.mock
+@respx.mock  # type: ignore[misc]
 async def test_thread_filter_param() -> None:
     respx.get("http://localhost:8000/api/chat/search").mock(
         return_value=httpx.Response(200, json=FIXTURE)
@@ -39,7 +39,7 @@ async def test_thread_filter_param() -> None:
 
 
 @pytest.mark.anyio("asyncio")
-@respx.mock
+@respx.mock  # type: ignore[misc]
 async def test_http_error() -> None:
     respx.get("http://localhost:8000/api/chat/search").mock(
         return_value=httpx.Response(404)

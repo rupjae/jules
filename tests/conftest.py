@@ -15,3 +15,9 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 def _set_log_level(caplog: pytest.LogCaptureFixture) -> None:
     """Keep test output concise by raising log level to INFO."""
     caplog.set_level("INFO")
+
+
+@pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    """Run async tests with asyncio backend only."""
+    return "asyncio"
