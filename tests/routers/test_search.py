@@ -12,6 +12,9 @@ from db import chroma
 @pytest.fixture()
 def chroma_ephemeral(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     class DummyEmbed:
+        def name(self) -> str:
+            return "dummy"
+
         def __call__(self, input: list[str]) -> list[list[float]]:
             return [[0.0, 0.0, 0.0] for _ in input]
 
@@ -85,7 +88,11 @@ def test_similarity_field_present(chroma_ephemeral: None) -> None:
         assert r.status_code == 200
         hits = r.json()
         assert hits
-        assert 0.0 <= hits[0]["similarity"] <= 1.0
+        hit = hits[0]
+        assert "similarity" in hit
+        assert round(hit["similarity"], 4) == hit["similarity"]
+        assert "distance" not in hit
+        assert 0.0 <= hit["similarity"] <= 1.0
 
 
 def test_min_similarity_filters(chroma_ephemeral: None) -> None:

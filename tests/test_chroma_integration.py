@@ -11,6 +11,9 @@ from db import chroma, sqlite
 
 
 class DummyEmbed:
+    def name(self) -> str:
+        return "dummy"
+
     def __call__(self, input: list[str]) -> list[list[float]]:
         vecs: list[list[float]] = []
         for t in input:

@@ -266,10 +266,10 @@ async def chat_search(
 ):
     """Vector search for messages.
 
-    Omit ``thread_id`` for a global search. Each hit now includes a
-    ``similarity`` score derived from cosine distance and can be filtered via
-    ``min_similarity``. May return fewer than ``top_k`` hits when filtering is
-    applied.
+    Omit ``thread_id`` for a global search. Each hit includes a ``similarity``
+    score derived from cosine distance and can be filtered via ``min_similarity``.
+    Returned similarity values are rounded to 4 decimals. May return fewer than
+    ``top_k`` hits when filtering is applied.
     """
 
     await _authorize(request, settings)
@@ -284,11 +284,15 @@ async def chat_search(
 
     results: list[dict] = []
     for hit in hits:
-        dist = max(hit.distance, 1e-9)  # protect against division by zero
-        sim = 1 / (1 + dist)
+        sim = hit.similarity
+        if sim is None:
+            continue
         if min_similarity is None or sim >= min_similarity:
-            item = hit.model_dump()
-            item["similarity"] = sim
+            item = {"text": hit.text, "similarity": round(sim, 4)}
+            if hit.ts is not None:
+                item["ts"] = hit.ts
+            if hit.role is not None:
+                item["role"] = hit.role
             results.append(item)
 
     return results

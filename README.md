@@ -83,14 +83,16 @@ Then open http://localhost:8000 to chat with **Jules**.
   ```
 • **GET /api/chat/search?thread_id=<id>&query=<text>**
   Vector similarity search backed by Chroma. Omit `thread_id` for a global
-  search. Each hit includes a `similarity` score and may be filtered via
-  `min_similarity` (0-1). Example:
+  search. Each hit includes a `similarity` score (0–1, higher means closer)
+  rounded to 4 decimals and may be filtered via `min_similarity`. Example:
 
 ```
 /api/chat/search?query=hello&min_similarity=0.8
 ```
 
-Returns `[{'text': 'hello', 'distance': 0.25, 'similarity': 0.63,
+Similarity ranges 0–1 (higher = closer).
+
+Returns `[{'text': 'hello', 'similarity': 0.6476,
 'timestamp': 1620000000.0, 'role': 'user'}]`.
 The backend will return the generated `X-Thread-ID` header on the very first
 request so that clients can persist it.  Subsequent calls should repeat the

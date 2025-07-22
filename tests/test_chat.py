@@ -30,6 +30,9 @@ class ChunkGraph:
 @pytest.fixture()
 def chroma_ephemeral(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     class DummyEmbed:
+        def name(self) -> str:
+            return "dummy"
+
         def __call__(self, input: list[str]) -> list[list[float]]:
             return [[0.0, 0.0, 0.0] for _ in input]
 
