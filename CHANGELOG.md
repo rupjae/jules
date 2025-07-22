@@ -23,5 +23,8 @@ All notable changes to this project will be documented in this file.
 - Conversation continues when the same `thread_id` is passed as a query parameter.
 - Added `@types/uuid` to resolve TypeScript build error.
 
+### Security
+- Bumped `starlette` to 0.47.2 to address GHSA-2c2j-9gv5-cj73.
+
 ### Removed
 - Postgres checkpoint backend and related configuration.
