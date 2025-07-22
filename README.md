@@ -86,12 +86,12 @@ Then open http://localhost:8000 to chat with **Jules**.
   search. Each hit includes a `similarity` score and may be filtered via
   `min_similarity` (0-1). Example:
 
-  ```
-  /api/chat/search?query=hello&min_similarity=0.8
-  ```
+```
+/api/chat/search?query=hello&min_similarity=0.8
+```
 
-  Returns `[{'text': str, 'distance': float, 'similarity': float,
-  'timestamp': float | null, 'role': str | null}]`.
+Returns `[{'text': 'hello', 'distance': 0.25, 'similarity': 0.63,
+'timestamp': 1620000000.0, 'role': 'user'}]`.
 The backend will return the generated `X-Thread-ID` header on the very first
 request so that clients can persist it.  Subsequent calls should repeat the
 same ID either via the `X-Thread-ID` header or as a `thread_id` query
