@@ -7,7 +7,7 @@ conversation context using the configured LangGraph checkpoint saver.
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Optional
 import logging
 import asyncio
 import io
@@ -18,7 +18,7 @@ from db.chroma import save_message, StoredMsg, SearchHit
 from db import sqlite
 from ..schemas import ChatMessageIn
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from langchain.schema import HumanMessage, SystemMessage
 from pathlib import Path
 from sse_starlette.sse import EventSourceResponse
@@ -251,17 +251,22 @@ async def post_message_legacy(
 @router.get("/chat/search", response_model=list[SearchHit])
 async def chat_search(
     request: Request,
-    thread_id: str,
     query: str,
+    thread_id: Optional[UUID] = Query(
+        None,
+        description="Limit to a conversation; omit for global",
+    ),
     settings: Settings = Depends(get_settings),
 ):
-    """Vector search for messages within *thread_id*."""
+    """Vector search for messages. Omit ``thread_id`` for a global search."""
 
     await _authorize(request, settings)
     from db.chroma import search as chroma_search
 
+    where = {"thread_id": str(thread_id)} if thread_id else {}
+
     try:
-        hits = await chroma_search(thread_id, query, k=8)
+        hits = await chroma_search(where, query, k=8)
     except Exception:
         raise HTTPException(status_code=503, detail="vector search unavailable")
 

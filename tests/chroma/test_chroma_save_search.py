@@ -41,7 +41,7 @@ def chroma_fake_embed(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, 
 def test_chroma_save_search(chroma_fake_embed: None) -> None:
     msg = chroma.StoredMsg(thread_id="t1", role="user", content="hello", ts=time.time())
     chroma.save_message(msg)
-    res = anyio.run(chroma.search, "t1", "hello", 1)
+    res = anyio.run(chroma.search, {"thread_id": "t1"}, "hello", 1)
     assert res
     assert res[0].text == "hello"
     assert res[0].distance <= 0.25
