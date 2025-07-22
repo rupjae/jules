@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import AsyncGenerator, List
 import logging
 import asyncio
+import io
 from uuid import UUID, uuid4
 import time
 import anyio
@@ -21,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from langchain.schema import HumanMessage, SystemMessage
 from pathlib import Path
 from sse_starlette.sse import EventSourceResponse
+from sse_starlette import sse as sse_mod
 
 from ..config import Settings, get_settings
 import datetime
@@ -30,6 +32,82 @@ router = APIRouter(prefix="/api")
 
 logger = logging.getLogger(__name__)
 THREAD_ID_HEADER = "X-Thread-ID"
+
+
+def _build_langgraph_state(prompt: str) -> dict:
+    """Return LangGraph input state for *prompt* with timestamp and system text."""
+
+    prompts_path = Path(__file__).parent.parent / "prompts" / "root.system.md"
+    try:
+        system_text = prompts_path.read_text(encoding="utf-8").strip()
+    except Exception:
+        system_text = ""
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    messages: list = []
+    if system_text:
+        messages.append(SystemMessage(content=system_text))
+    messages.append(HumanMessage(content=prompt, additional_kwargs={"timestamp": now}))
+    return {"messages": messages}
+
+
+async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str, None]:
+    """Execute the graph and yield the assistant reply token by token."""
+
+    user_state = _build_langgraph_state(prompt)
+
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue[str | None] = asyncio.Queue()
+
+    def _run_sync() -> str:
+        latest = ""
+        cfg = {"configurable": {"thread_id": thread_id}}
+        for step in graph.stream(user_state, cfg):
+            msgs: List | None = step.get("llm", {}).get("messages")
+            if msgs:
+                current = msgs[-1].content
+                for ch in current[len(latest) :]:
+                    loop.call_soon_threadsafe(q.put_nowait, ch)
+                latest = current
+        loop.call_soon_threadsafe(q.put_nowait, None)
+        return latest
+
+    future = loop.run_in_executor(None, _run_sync)
+    buffer = io.StringIO()
+    while True:
+        ch = await q.get()
+        if ch is None:
+            break
+        buffer.write(ch)
+        yield ch
+
+    assistant_buffer = buffer.getvalue()
+    await future
+
+    # Persist user and assistant messages after streaming completes
+    user_msg = StoredMsg(
+        id=str(uuid4()),
+        thread_id=thread_id,
+        role="user",
+        content=prompt,
+        ts=time.time(),
+    )
+    assistant_msg = StoredMsg(
+        id=str(uuid4()),
+        thread_id=thread_id,
+        role="assistant",
+        content=assistant_buffer,
+        ts=time.time(),
+    )
+
+    await sqlite.insert(sqlite.ChatMessage(**user_msg.model_dump()))
+    await sqlite.insert(sqlite.ChatMessage(**assistant_msg.model_dump()))
+    try:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(anyio.to_thread.run_sync, save_message, user_msg)
+            tg.start_soon(anyio.to_thread.run_sync, save_message, assistant_msg)
+    except Exception:
+        logger.warning("Chroma save failed", exc_info=True)
 
 
 async def _authorize(
@@ -76,48 +154,14 @@ async def chat_endpoint(
         thread_id = str(uuid4())
 
     graph = request.app.state.graph
-
-    async def generator() -> AsyncGenerator[str, None]:
-        """Run the *blocking* graph.exec in a thread pool and stream tokens."""
-
-        # Provide the **new** user message only.  LangGraph will automatically
-        # hydrate the previous conversation from the configured checkpointer
-        # (SQLite or in-memory) when a checkpoint for *thread_id* exists.  This
-        # avoids the earlier "checkpoint['v'] is None" migration bug.
-
-        # Load system prompt and include it before the user message
-        prompts_path = Path(__file__).parent.parent / "prompts" / "root.system.md"
-        try:
-            system_text = prompts_path.read_text(encoding="utf-8").strip()
-        except Exception:
-            system_text = ""
-        # Prepare messages: system prompt followed by user message with timestamp
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        messages: list = []
-        if system_text:
-            messages.append(SystemMessage(content=system_text))
-        messages.append(
-            HumanMessage(content=prompt, additional_kwargs={"timestamp": now})
-        )
-        user_state = {"messages": messages}
-
-        loop = asyncio.get_running_loop()
-
-        def _run_sync() -> List[str]:
-            latest_tokens: List[str] = []
-            cfg = {"configurable": {"thread_id": thread_id}}
-            for step in graph.stream(user_state, cfg):
-                messages: List | None = step.get("llm", {}).get("messages")
-                if messages:
-                    latest_tokens = list(messages[-1].content)
-            return latest_tokens
-
-        tokens: List[str] = await loop.run_in_executor(None, _run_sync)
-        for ch in tokens:
-            yield ch
+    # Reset SSE shutdown event to avoid event-loop cross-talk in tests
+    sse_mod.AppStatus.should_exit_event = None
 
     # Attach the (possibly freshly generated) thread id so clients can persist it.
-    return EventSourceResponse(generator(), headers={"X-Thread-ID": thread_id})
+    return EventSourceResponse(
+        stream_chat(prompt, thread_id, graph),
+        headers={"X-Thread-ID": thread_id},
+    )
 
 
 @router.get("/chat/history")

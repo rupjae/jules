@@ -55,11 +55,13 @@ persists across restarts.
 Then open http://localhost:8000 to chat with **Jules**.
 
 ### API Endpoints
-- **POST /api/chat?thread_id=<id>&message=<text>**
+• **GET /api/chat?thread_id=<id>&message=<text>**
   Streams chat completions via Server-Sent Events.  On the first request for a new thread,
   the `X-Thread-ID` response header provides the generated session ID.  Include the same
   `thread_id` (query or `X-Thread-ID` header) on subsequent calls to continue the conversation.
-- **POST /api/chat/message**
+  Once the assistant reply finishes streaming, both the user prompt and the response are
+  automatically persisted to SQLite and Chroma so they appear in subsequent searches.
+• **POST /api/chat/message**
   Persist a single chat message to SQLite and Chroma. Accepts a JSON body `{"thread_id": "<uuid>", "role": "user|assistant|system|tool", "content": "<text>"}` (max 32k chars).
   The legacy query-parameter variant remains available at `/api/chat/message/legacy` and will be removed after v0.5.
   Example:
@@ -69,7 +71,7 @@ Then open http://localhost:8000 to chat with **Jules**.
     -d '{"thread_id":"123e4567-e89b-12d3-a456-426614174000","role":"user","content":"hi"}' \
     http://localhost:8000/api/chat/message
   ```
-- **GET /api/chat/history?thread_id=<id>**
+• **GET /api/chat/history?thread_id=<id>**
   Returns the full conversation history as JSON:
   ```
   > NOTE: Both `/api/chat/history` and `/api/chat/search` responses now include a `"timestamp"` field (ISO-8601 UTC) for each message.
@@ -79,7 +81,7 @@ Then open http://localhost:8000 to chat with **Jules**.
     ...
   ]
   ```
-- **GET /api/chat/search?thread_id=<id>&query=<text>**
+• **GET /api/chat/search?thread_id=<id>&query=<text>**
   Vector similarity search within a thread backed by Chroma. Returns a list of
   objects `[{'text': str, 'distance': float, 'timestamp': float | null, 'role': str | null}]`.
 The backend will return the generated `X-Thread-ID` header on the very first
