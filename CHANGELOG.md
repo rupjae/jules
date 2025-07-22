@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 * BREAKING: `/api/chat/search` no longer returns `distance`. `similarity` field is now rounded to 4 decimals.
+* Clients that need raw distance should compute it client-side or read it from earlier API versions.
 
 ### Added
 - Green-field enforcement via CI and pre-commit.

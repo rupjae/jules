@@ -90,7 +90,7 @@ def test_similarity_field_present(chroma_ephemeral: None) -> None:
         assert hits
         hit = hits[0]
         assert "similarity" in hit
-        assert len(str(hit["similarity"]).split(".")[1]) <= 4
+        assert round(hit["similarity"], 4) == hit["similarity"]
         assert "distance" not in hit
         assert 0.0 <= hit["similarity"] <= 1.0
 
