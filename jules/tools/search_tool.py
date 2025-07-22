@@ -19,7 +19,7 @@ class SearchResult:
 
 
 class ChromaSearchTool:
-    """Retrieve the *k* most relevant chat messages via the ``/api/chat/search`` endpoint.
+    """Retrieve the *k* most relevant chat messages via the **/api/chat/search** endpoint.
 
     Args:
         query: Natural-language search string.
@@ -28,10 +28,10 @@ class ChromaSearchTool:
         timeout: Network timeout in seconds (default 10).
 
     Returns:
-        List[SearchResult] sorted by ``similarity`` desc (0-1).
+        List[SearchResult] sorted by `similarity` desc (0-1).
 
     Example (agent call JSON):
-        ``{"query": "SIEM licensing", "k": 3}``
+        {"query": "SIEM licensing", "k": 3}
     """
 
     def __init__(self, timeout: int = 10) -> None:

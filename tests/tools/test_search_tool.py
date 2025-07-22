@@ -13,9 +13,9 @@ FIXTURE = [
 ]
 
 
-@pytest.mark.anyio
+@pytest.mark.anyio("asyncio")
 @respx.mock
-async def test_happy_path(anyio_backend: str = "asyncio") -> None:
+async def test_happy_path() -> None:
     route = respx.get("http://localhost:8000/api/chat/search").mock(
         return_value=httpx.Response(200, json=FIXTURE)
     )
@@ -26,9 +26,9 @@ async def test_happy_path(anyio_backend: str = "asyncio") -> None:
     assert results[0].similarity == 0.92
 
 
-@pytest.mark.anyio
+@pytest.mark.anyio("asyncio")
 @respx.mock
-async def test_thread_filter_param(anyio_backend: str = "asyncio") -> None:
+async def test_thread_filter_param() -> None:
     respx.get("http://localhost:8000/api/chat/search").mock(
         return_value=httpx.Response(200, json=FIXTURE)
     )
@@ -38,9 +38,9 @@ async def test_thread_filter_param(anyio_backend: str = "asyncio") -> None:
     assert "thread_id=abc" in str(last_request.url)
 
 
-@pytest.mark.anyio
+@pytest.mark.anyio("asyncio")
 @respx.mock
-async def test_http_error(anyio_backend: str = "asyncio") -> None:
+async def test_http_error() -> None:
     respx.get("http://localhost:8000/api/chat/search").mock(
         return_value=httpx.Response(404)
     )
