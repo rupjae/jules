@@ -256,9 +256,20 @@ async def chat_search(
         None,
         description="Limit to a conversation; omit for global",
     ),
+    min_similarity: float | None = Query(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="If set, drop hits below this similarity (0-1).",
+    ),
     settings: Settings = Depends(get_settings),
 ):
-    """Vector search for messages. Omit ``thread_id`` for a global search."""
+    """Vector search for messages.
+
+    Omit ``thread_id`` for a global search. Each hit now includes a
+    ``similarity`` score derived from cosine distance and can be filtered via
+    ``min_similarity``.
+    """
 
     await _authorize(request, settings)
     from db.chroma import search as chroma_search
@@ -270,4 +281,12 @@ async def chat_search(
     except Exception:
         raise HTTPException(status_code=503, detail="vector search unavailable")
 
-    return hits
+    results: list[dict] = []
+    for hit in hits:
+        sim = 1 / (1 + hit.distance)
+        if min_similarity is None or sim >= min_similarity:
+            item = hit.model_dump()
+            item["similarity"] = sim
+            results.append(item)
+
+    return results

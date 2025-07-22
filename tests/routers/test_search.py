@@ -68,3 +68,46 @@ def test_thread_search_still_isolated(chroma_ephemeral: None) -> None:
         hits = r.json()
         assert len(hits) == 1
         assert hits[0]["text"] == "alpha"
+
+
+def test_similarity_field_present(chroma_ephemeral: None) -> None:
+    app = FastAPI()
+    app.include_router(chat_router.router)
+
+    with TestClient(app) as client:
+        tid = "550e8400-e29b-41d4-a716-446655440015"
+        client.post(
+            "/api/chat/message",
+            json={"thread_id": tid, "role": "user", "content": "hello"},
+        )
+
+        r = client.get("/api/chat/search", params={"thread_id": tid, "query": "hello"})
+        assert r.status_code == 200
+        hits = r.json()
+        assert hits
+        assert 0.0 <= hits[0]["similarity"] <= 1.0
+
+
+def test_min_similarity_filters(chroma_ephemeral: None) -> None:
+    app = FastAPI()
+    app.include_router(chat_router.router)
+
+    with TestClient(app) as client:
+        tid = "550e8400-e29b-41d4-a716-446655440016"
+        client.post(
+            "/api/chat/message",
+            json={"thread_id": tid, "role": "user", "content": "hello"},
+        )
+        client.post(
+            "/api/chat/message",
+            json={"thread_id": tid, "role": "user", "content": "unrelated"},
+        )
+
+        r = client.get(
+            "/api/chat/search",
+            params={"thread_id": tid, "query": "hello", "min_similarity": 0.9},
+        )
+        assert r.status_code == 200
+        hits = r.json()
+        assert len(hits) == 1
+        assert hits[0]["text"] == "hello"

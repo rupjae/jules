@@ -87,6 +87,9 @@ class SearchHit(BaseModel):
 
     text: str
     distance: float = Field(..., description="Cosine distance; lower is more similar")
+    similarity: float | None = Field(
+        None, ge=0.0, le=1.0, description="Monotonic similarity derived from distance"
+    )
     ts: float | None = None
     role: str | None = None
 
