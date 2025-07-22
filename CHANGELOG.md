@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+* BREAKING: `/api/chat/search` no longer returns `distance`. `similarity` field is now rounded to 4 decimals.
+
 ### Added
 - Green-field enforcement via CI and pre-commit.
 - Streaming `/api/chat` exchanges are now persisted to Chroma after the

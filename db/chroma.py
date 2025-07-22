@@ -83,12 +83,11 @@ class StoredMsg(BaseModel):
 
 
 class SearchHit(BaseModel):
-    """Vector search result."""
+    """Vector search result without raw distance."""
 
     text: str
-    distance: float = Field(..., description="Cosine distance; lower is more similar")
-    similarity: float | None = Field(
-        None, ge=0.0, le=1.0, description="Monotonic similarity derived from distance"
+    similarity: float = Field(
+        ..., ge=0.0, le=1.0, description="Monotonic similarity derived from distance"
     )
     ts: float | None = None
     role: str | None = None
@@ -121,7 +120,8 @@ async def search(
 ) -> list[SearchHit]:
     """Return the closest messages to *query* filtered by *where*.
 
-    Results include ``similarity`` in addition to raw ``distance``.
+    Each hit carries a ``similarity`` score only; the raw distance is not
+    returned.
     """
 
     try:
@@ -156,7 +156,6 @@ async def search(
         results.append(
             SearchHit(
                 text=doc,
-                distance=dist,
                 similarity=similarity,
                 ts=meta.get("ts"),
                 role=meta.get("role"),
