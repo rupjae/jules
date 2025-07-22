@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import AsyncGenerator, List
 import logging
 import asyncio
-from queue import SimpleQueue
 import io
 from uuid import UUID, uuid4
 import time
@@ -58,7 +57,7 @@ async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str,
     user_state = _build_langgraph_state(prompt)
 
     loop = asyncio.get_running_loop()
-    q: SimpleQueue[str | None] = SimpleQueue()
+    q: asyncio.Queue[str | None] = asyncio.Queue()
 
     def _run_sync() -> str:
         latest = ""
@@ -68,15 +67,15 @@ async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str,
             if msgs:
                 current = msgs[-1].content
                 for ch in current[len(latest) :]:
-                    loop.call_soon_threadsafe(q.put, ch)
+                    loop.call_soon_threadsafe(q.put_nowait, ch)
                 latest = current
-        loop.call_soon_threadsafe(q.put, None)
+        loop.call_soon_threadsafe(q.put_nowait, None)
         return latest
 
     future = loop.run_in_executor(None, _run_sync)
     buffer = io.StringIO()
     while True:
-        ch = await asyncio.to_thread(q.get)
+        ch = await q.get()
         if ch is None:
             break
         buffer.write(ch)
