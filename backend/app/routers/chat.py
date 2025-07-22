@@ -268,13 +268,14 @@ async def chat_search(
 
     Omit ``thread_id`` for a global search. Each hit now includes a
     ``similarity`` score derived from cosine distance and can be filtered via
-    ``min_similarity``.
+    ``min_similarity``. May return fewer than ``top_k`` hits when filtering is
+    applied.
     """
 
     await _authorize(request, settings)
     from db.chroma import search as chroma_search
 
-    where = {"thread_id": str(thread_id)} if thread_id else {}
+    where = {"thread_id": str(thread_id)} if thread_id else None
 
     try:
         hits = await chroma_search(where, query, k=8)
@@ -283,7 +284,8 @@ async def chat_search(
 
     results: list[dict] = []
     for hit in hits:
-        sim = 1 / (1 + hit.distance)
+        dist = max(hit.distance, 1e-9)  # protect against division by zero
+        sim = 1 / (1 + dist)
         if min_similarity is None or sim >= min_similarity:
             item = hit.model_dump()
             item["similarity"] = sim

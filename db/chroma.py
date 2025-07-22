@@ -116,8 +116,13 @@ def save_message(msg: StoredMsg) -> None:
 
 
 @trace
-async def search(where: dict, query: str, k: int = 8) -> list[SearchHit]:
-    """Return the closest messages to *query* filtered by *where*."""
+async def search(
+    where: dict[str, str] | None, query: str, k: int = 8
+) -> list[SearchHit]:
+    """Return the closest messages to *query* filtered by *where*.
+
+    Results include ``similarity`` in addition to raw ``distance``.
+    """
 
     try:
         col = _get_collection()
