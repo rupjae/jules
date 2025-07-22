@@ -1,0 +1,6 @@
+site_name: Jules
+nav:
+  - Home: index.md
+  - CI: ci-greenfield.md
+  - Tools:
+      - Search Tool: tools/search_tool.md
