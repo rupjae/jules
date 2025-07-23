@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover – langchain optional in minimal instal
 
 # Local runtime configuration -------------------------------------------------
 
-from backend.app.config import get_settings
+from app.config import get_settings
 
 # Cache the settings instance once at import time – these values are immutable
 # for the lifetime of the process and reading from the cached copy avoids the

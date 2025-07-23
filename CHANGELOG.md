@@ -30,6 +30,8 @@ All notable changes to this project will be documented in this file.
 
 
 ### Fixed
+- Corrected settings import path from `backend.app.config` to `app.config` across
+  the codebase and added a regression test.
 - Agent now recalls prior turns when the same `X-Thread-ID` is reused.
 - Chroma container health check now uses `nc` instead of missing `wget`.
 - Conversation continues when the same `thread_id` is passed as a query parameter.

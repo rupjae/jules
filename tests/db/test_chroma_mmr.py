@@ -9,7 +9,7 @@ import anyio
 import chromadb
 import pytest
 
-from backend.app.config import get_settings
+from app.config import get_settings
 from db import chroma
 
 
