@@ -15,9 +15,21 @@ import httpx
 from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import EmbeddingFunction, QueryResult
-from typing import Any
+from typing import Any, Set
 from chromadb.utils import embedding_functions
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Runtime configuration
+# ---------------------------------------------------------------------------
+
+from backend.app.config import get_settings
+
+# Cache the settings instance once at import time – these values are immutable
+# for the lifetime of the process and reading from the cached copy avoids the
+# relatively expensive environment parsing on every search call.
+
+settings = get_settings()
 
 from jules.logging import trace
 
@@ -116,25 +128,42 @@ def save_message(msg: StoredMsg) -> None:
 
 @trace
 async def search(
-    where: dict[str, str] | None, query: str, k: int = 8
+    where: dict[str, str] | None, query: str, k: int | None = None
 ) -> list[SearchHit]:
-    """Return the closest messages to *query* filtered by *where*.
+    """Return *top-k* semantically similar messages to *query* using a simple
+    Max-Marginal-Relevance style **de-duplication** strategy.
 
-    Each hit carries a ``similarity`` score only; the raw distance is not
-    returned.
+    The function intentionally oversamples the initial candidate set and then
+    filters it down to *k* unique texts to approximate the effect of true MMR
+    without adding a heavyweight dependency on LangChain in the hot path.
     """
 
+    top_k = k or settings.SEARCH_TOP_K
+    oversample = settings.SEARCH_MMR_OVERSAMPLE
+
+    # Guard against obviously bad caller input — negative or zero k.
+    if top_k <= 0:
+        return []
+
+    # ---------------------------------------------------------------------
+    # Fetch *top_k × oversample* raw candidates from Chroma
+    # ---------------------------------------------------------------------
     try:
         col = _get_collection()
-        try:
-            timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
-        except ValueError:
-            logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
-            timeout_ms = 100
+        timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+    except ValueError:
+        logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
+        timeout_ms = 100
+
+    try:
         with anyio.fail_after(timeout_ms / 1000):
 
             def _run_query() -> QueryResult:
-                kwargs = {"query_texts": [query], "n_results": k}
+                n_results = top_k * oversample
+                kwargs: dict[str, Any] = {
+                    "query_texts": [query],
+                    "n_results": n_results,
+                }
                 if where:
                     kwargs["where"] = where
                 return col.query(**kwargs)
@@ -144,15 +173,27 @@ async def search(
         logger.warning("Chroma search failed", exc_info=True)
         return []
 
+    # ---------------------------------------------------------------------
+    # Convert raw Chroma response → SearchHit list while enforcing uniqueness
+    # ---------------------------------------------------------------------
     docs = (res.get("documents") or [[]])[0]
     dists = (res.get("distances") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
+
+    seen: Set[str] = set()
     results: list[SearchHit] = []
+
     for i, doc in enumerate(docs):
+        # Skip duplicates – the very property MMR aims to minimise.
+        if doc in seen:
+            continue
+        seen.add(doc)
+
         meta = metas[i] if i < len(metas) else {}
         dist = dists[i]
         dist = max(dist, 1e-9)
         similarity = 1 / (1 + dist)
+
         results.append(
             SearchHit(
                 text=doc,
@@ -161,6 +202,10 @@ async def search(
                 role=meta.get("role"),
             )
         )
+
+        if len(results) >= top_k:
+            break
+
     return results
 
 
