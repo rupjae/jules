@@ -19,6 +19,17 @@ jobs:
         run: |
           poetry config virtualenvs.create false
           poetry install --no-interaction --no-root
+      - name: Validate lock file & pyproject
+        run: poetry check
+      - name: Ensure single LangChain package only
+        run: |
+          if poetry show --top-level | grep -qE "^langchain-(core|community)"; then
+            echo "❌ Split langchain packages detected. Keep only monolith entry." >&2
+            poetry show --top-level | grep -E "^langchain-(core|community|openai)" >&2 || true
+            exit 1
+          else
+            echo "✅ Only monolith LangChain present"
+          fi
       - name: Start services
         run: docker compose up -d chroma
       - name: Run tests
