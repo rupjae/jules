@@ -96,11 +96,18 @@ def _get_client() -> ClientAPI:
     if _client is None:
         host = os.environ.get("CHROMA_HOST", "chroma")
         port = int(os.environ.get("CHROMA_PORT", "8000"))
+        # The initial embedding call can easily take >1 s when the model (or
+        # an external dependency such as a SentenceTransformer ONNX weight)
+        # needs to be downloaded.  A very low default led to frequent
+        # *ReadTimeout* errors during the first `save_message()` call after
+        # startup.  We therefore adopt a more forgiving **5 s** default while
+        # still allowing runtime override via *CHROMA_TIMEOUT_MS*.
+
         try:
-            timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
+            timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "5000"))
         except ValueError:
-            logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 100 ms")
-            timeout_ms = 100
+            logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 5000 ms")
+            timeout_ms = 5000
         _client = HttpClient(
             host=host, port=port, settings=Settings(anonymized_telemetry=False)
         )
@@ -115,23 +122,75 @@ def _get_client() -> ClientAPI:
 def _get_embedding() -> EmbeddingFunction[Any]:
     global _embedding
     if _embedding is None:
-        emb_cls = getattr(embedding_functions, "OpenAIEmbeddingFunction")
-        _embedding = emb_cls(
-            model_name="text-embedding-3-large",
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-        )
+        # Prefer **OpenAI** when an API key is available; otherwise fall back
+        # to the lightweight local MiniLM model to avoid runtime failures and
+        # large vector dimensionality mismatches (OpenAI = 3072 dims vs MiniLM
+        # = 384).  The conditional keeps the embedding dimensionality stable
+        # throughout the process lifetime which is crucial because Chroma
+        # permanently binds the dimension at collection-creation time.
+
+        # Default strategy --------------------------------------------------
+        # 1. If the operator explicitly requests local embeddings via
+        #    FORCE_LOCAL_EMBEDDINGS=true → MiniLM.
+        # 2. Else, try the OpenAI path.  This is cheap in unit tests where the
+        #    class is monkey-patched to a dummy embedder and avoids pulling
+        #    the 79 MB MiniLM model during CI.
+        # 3. If OpenAI instantiation fails (e.g. missing key), silently fall
+        #    back to MiniLM.
+
+        if os.getenv("FORCE_LOCAL_EMBEDDINGS", "false").lower() in {"1", "true", "yes"}:
+            emb_cls = getattr(
+                embedding_functions, "SentenceTransformerEmbeddingFunction"
+            )
+            _embedding = emb_cls(model_name="all-MiniLM-L6-v2")
+        else:
+            try:
+                emb_cls = getattr(embedding_functions, "OpenAIEmbeddingFunction")
+                _embedding = emb_cls(
+                    model_name="text-embedding-3-large",
+                    api_key=os.getenv("OPENAI_API_KEY", ""),
+                )
+            except Exception:
+                emb_cls = getattr(
+                    embedding_functions, "SentenceTransformerEmbeddingFunction"
+                )
+                _embedding = emb_cls(model_name="all-MiniLM-L6-v2")
     return _embedding
 
 
 def _get_collection() -> Collection:
     global _collection
     if _collection is None:
+        # Lazily resolve the shared collection.  We try **get** first to avoid
+        # a round-trip that *may* trigger a 409 Conflict on some Chroma
+        # versions when the collection already exists – see
+        # https://github.com/chroma-core/chroma/issues/890.
+
         emb = _get_embedding()
         client = _get_client()
-        _collection = client.get_or_create_collection(
-            "threads_memory",
-            embedding_function=emb,
-        )
+
+        try:
+            _collection = client.get_collection("threads_memory")
+
+            # Ensure the embedding function is attached – the server does not
+            # persist embedding config and the client wrapper needs it for
+            # all similarity operations.
+            if getattr(_collection, "_embedding_function", None) is None:
+                _collection._embedding_function = emb  # type: ignore[attr-defined]
+
+        except Exception:
+            # Collection missing – create it now.  Should a race lead to a
+            # *UniqueConstraintError* we fall back to fetching the existing
+            # one which is guaranteed to succeed on the second attempt.
+            try:
+                _collection = client.create_collection(
+                    "threads_memory", embedding_function=emb
+                )
+            except Exception:
+                _collection = client.get_collection("threads_memory")
+                if getattr(_collection, "_embedding_function", None) is None:
+                    _collection._embedding_function = emb  # type: ignore[attr-defined]
+
     return _collection
 
 
@@ -173,7 +232,43 @@ def save_message(msg: StoredMsg) -> None:
                 }
             ],
         )
-    except Exception:
+    except Exception as exc:
+        # Several recoverable failure modes require a one-time recreation of
+        # the collection – dimension mismatch (when it was previously created
+        # with a different embedding size) or an outright *InvalidCollection*
+        # after an unexpected server restart.
+
+        err_msg = str(exc)
+        if (
+            "does not match collection dimensionality" in err_msg
+            or "does not exist" in err_msg
+        ):
+            try:
+                client = _get_client()
+                client.delete_collection("threads_memory")
+            except Exception:
+                logger.warning("Failed to delete mismatching collection", exc_info=True)
+
+            # Reset cached handle and try once more.
+            global _collection
+            _collection = None
+            try:
+                col = _get_collection()
+                col.add(
+                    ids=[msg.id],
+                    documents=[msg.content],
+                    metadatas=[
+                        {
+                            "thread_id": msg.thread_id,
+                            "role": msg.role,
+                            "ts": msg.ts,
+                        }
+                    ],
+                )
+                return
+            except Exception:  # pragma: no cover – second failure is fatal
+                logger.warning("Second attempt to save message failed", exc_info=True)
+
         logger.warning("Failed to save message", exc_info=True)
 
 
