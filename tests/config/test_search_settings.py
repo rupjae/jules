@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from backend.app.config import Settings
+from app.config import Settings
 
 
 def _clear_env(keys: list[str]):
@@ -30,4 +30,3 @@ def test_top_k_bounds(bad):
             Settings()
     finally:
         _clear_env(["SEARCH_TOP_K"])
-
