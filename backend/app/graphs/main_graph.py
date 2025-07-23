@@ -33,17 +33,21 @@ class GraphState(TypedDict):
 def _llm_node(state: GraphState, config: RunnableConfig | None = None) -> GraphState:
     """Generate assistant reply using the configured LLM."""
     llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.2,
+        model="gpt-4.1",
+        # temperature=0.2,
         openai_api_key=settings.openai_api_key,
     )
     # Generate AI response and annotate with timestamp
     raw_msg: AIMessage = llm.invoke(state["messages"])
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     # preserve content and attach timestamp metadata
-    ai_msg = AIMessage(content=raw_msg.content,
-                       additional_kwargs={**getattr(raw_msg, 'additional_kwargs', {}),
-                                          'timestamp': now})
+    ai_msg = AIMessage(
+        content=raw_msg.content,
+        additional_kwargs={
+            **getattr(raw_msg, "additional_kwargs", {}),
+            "timestamp": now,
+        },
+    )
     return {"messages": [ai_msg]}
 
 
