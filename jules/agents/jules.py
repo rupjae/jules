@@ -24,6 +24,10 @@ except ImportError:  # pragma: no cover – dependency not present
     AIMessage = HumanMessage = SystemMessage = BaseMessage = _BareMsg  # type: ignore
 
 from jules.config import JulesCfg, get_agent_cfg
+import logging
+from jules.logging import trace
+
+logger = logging.getLogger(__name__)
 
 
 class JulesAgent:
@@ -62,6 +66,7 @@ class JulesAgent:
         except Exception:
             self._system_text = ""
 
+    @trace
     async def __call__(self, user_message: str, *, cheat_sheet: str = "") -> str:
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 

@@ -54,6 +54,10 @@ class _OfflineLLM:
 
 from jules.config import RetrievalCfg, get_agent_cfg
 from jules.tools.search_tool import ChromaSearchTool, SearchResult
+import logging
+from jules.logging import trace
+
+logger = logging.getLogger(__name__)
 
 # Public API -----------------------------------------------------------------
 
@@ -105,6 +109,7 @@ class RetrievalAgent:
     # Public helpers
     # ---------------------------------------------------------------------
 
+    @trace
     async def decide(  # noqa: D401 – imperative mood is fine here
         self, user_message: str, *, thread_id: Optional[str] = None
     ) -> dict[str, Any]:
@@ -153,6 +158,7 @@ class RetrievalAgent:
 
         return {"need_search": True, "query": query, "k": k, "thread_id": thread_id}
 
+    @trace
     async def cheat_sheet_from_results(
         self, results: Sequence[SearchResult]
     ) -> str:
@@ -180,13 +186,28 @@ class RetrievalAgent:
             [SystemMessage(content=prompt)], max_tokens=self.cfg.summary_tokens
         )
 
-        return msg.content.strip()
+        raw = msg.content.strip()
+
+        # Enforce token cap post-hoc using tiktoken to guarantee ≤summary_tokens
+        try:
+            import tiktoken  # type: ignore
+
+            enc = tiktoken.encoding_for_model(self.cfg.model)
+            tokens = enc.encode(raw)
+            if len(tokens) > self.cfg.summary_tokens:
+                raw = enc.decode(tokens[: self.cfg.summary_tokens]) + " …"
+        except Exception:
+            # Soft-fail: keep raw text
+            pass
+
+        return raw
 
 
     # ------------------------------------------------------------------
     # Convenience one-shot helper used outside LangGraph
     # ------------------------------------------------------------------
 
+    @trace
     async def run(
         self, user_message: str, *, thread_id: Optional[str] = None
     ) -> dict[str, Any]:

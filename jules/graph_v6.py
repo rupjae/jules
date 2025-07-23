@@ -26,6 +26,10 @@ from typing_extensions import TypedDict
 from jules.agents.retrieval import RetrievalAgent
 from jules.agents.jules import JulesAgent
 from jules.tools.search_tool import ChromaSearchTool, SearchResult
+import logging
+from jules.logging import trace
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -55,29 +59,46 @@ def _input_node(message: str, _state: GraphState | None = None) -> GraphState:  
 _retrieval_agent = RetrievalAgent()
 
 
-async def _retrieval_decide(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
-    res = await _retrieval_agent.decide(state["user_message"])
+@trace
+def _retrieval_decide(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
+    """Node: decide if search is needed."""
+    import asyncio
+
+    res = asyncio.run(_retrieval_agent.decide(state["user_message"]))
     return res  # type: ignore[return-value]
 
 
 _search_tool = ChromaSearchTool()
 
 
-async def _chroma_node(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
-    hits = await _search_tool(query=state["query"], k=state["k"])
+@trace
+def _chroma_node(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
+    import asyncio
+
+    hits = asyncio.run(_search_tool(query=state["query"], k=state["k"]))
     return {"search_hits": hits}
 
 
-async def _retrieval_summary(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
-    cheat_sheet = await _retrieval_agent.cheat_sheet_from_results(state.get("search_hits", []))
+@trace
+def _retrieval_summary(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
+    import asyncio
+
+    cheat_sheet = asyncio.run(
+        _retrieval_agent.cheat_sheet_from_results(state.get("search_hits", []))
+    )
     return {"cheat_sheet": cheat_sheet}
 
 
 _jules_agent = JulesAgent()
 
 
-async def _jules_node(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
-    reply = await _jules_agent(state["user_message"], cheat_sheet=state.get("cheat_sheet", ""))
+@trace
+def _jules_node(state: GraphState, _: RunnableConfig | None = None) -> GraphState:  # noqa: D401
+    import asyncio
+
+    reply = asyncio.run(
+        _jules_agent(state["user_message"], cheat_sheet=state.get("cheat_sheet", ""))
+    )
     return {"reply": reply}
 
 

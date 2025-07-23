@@ -16,6 +16,7 @@ older binaries.
 from __future__ import annotations
 
 from pathlib import Path
+import os
 from typing import Any, Mapping
 
 import tomllib
@@ -29,8 +30,14 @@ __all__ = [
 ]
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-TOML_PATH = BASE_DIR / "config" / "agents.toml"
+# Resolve config path relative to package or via env override.
+
+_ENV_PATH = os.getenv("JULES_AGENTS_TOML")
+
+if _ENV_PATH:
+    TOML_PATH = Path(_ENV_PATH).expanduser().resolve()
+else:
+    TOML_PATH = (Path(__file__).resolve().parent.parent / "config" / "agents.toml").resolve()
 
 
 class RetrievalCfg(BaseModel):
@@ -98,4 +105,3 @@ def get_agent_cfg(name: str) -> RetrievalCfg | JulesCfg:
     if hasattr(cfg, name):
         return getattr(cfg, name)
     raise KeyError(f"Unknown agent config '{name}'.")
-
