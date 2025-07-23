@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 * Added validated MMR tuning environment variables (`SEARCH_TOP_K`, `SEARCH_MMR_OVERSAMPLE`, `SEARCH_MMR_LAMBDA`) with sensible defaults.
-* Bumped LangChain to `0.3.26`.
+* Pinned LangChain monolith to `0.3.26` (includes MMR); removed split-package pins (`langchain-core`, `langchain-community`, `langchain-openai`).
 
 * BREAKING: `/api/chat/search` no longer returns `distance`. `similarity` field is now rounded to 4 decimals.
 * Clients that need raw distance should compute it client-side or read it from earlier API versions.

@@ -21,6 +21,9 @@ jobs:
           poetry install --no-interaction --no-root
       - name: Validate lock file & pyproject
         run: poetry check
+      - name: Ensure single LangChain package only
+        run: |
+          ! poetry show --top-level | grep -E "^langchain-(core|community|openai)"
       - name: Start services
         run: docker compose up -d chroma
       - name: Run tests
