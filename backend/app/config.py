@@ -31,6 +31,19 @@ class Settings(BaseSettings):
     # Path to the persistent LangGraph checkpoint database.
     checkpoint_db: str = Field("data/checkpoints.sqlite", env="JULES_CHECKPOINT_DB")
 
+    # ---------------------------------------------------------------------
+    # Vector search parameters (defaults tuned for small-scale demos).
+    # ---------------------------------------------------------------------
+    # Number of final results returned to callers.
+    SEARCH_TOP_K: int = Field(8, env="SEARCH_TOP_K")
+    # Oversampling factor when performing MMR – the actual number of vectors
+    # fetched from the DB is k * oversample to give the algorithm more
+    # candidates to choose from.
+    SEARCH_MMR_OVERSAMPLE: int = Field(4, env="SEARCH_MMR_OVERSAMPLE")
+    # λ trade-off parameter between similarity (1→purely relevance-based) and
+    # diversity (0→purely novelty-based).
+    SEARCH_MMR_LAMBDA: float = Field(0.5, env="SEARCH_MMR_LAMBDA")
+
     class Config:
         case_sensitive = False
 

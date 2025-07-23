@@ -10,7 +10,7 @@ fastapi = "0.116.1"
 uvicorn = {version = "0.29.0", extras = ["standard"]}
 python-dotenv = "1.0.1"
 langchain-core = "0.3.69"
-langchain = "0.3.26"
+langchain = "^0.1.16"
 langchain-openai = "0.3.28"
 langgraph = "0.5.3"
 langchain-community = "0.3.27"
