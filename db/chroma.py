@@ -23,6 +23,19 @@ from pydantic import BaseModel, Field
 # Runtime configuration
 # ---------------------------------------------------------------------------
 
+# External vector-store helpers
+# ---------------------------------------------------------------------------
+# We try to import LangChain lazily.  In production it should be installed via
+# poetry, but tests don’t depend on it.  When missing we silently fall back to
+# the legacy dense-search path.
+
+try:
+    from langchain.vectorstores import Chroma as LCChroma  # type: ignore
+except ImportError:  # pragma: no cover – langchain optional in minimal installs
+    LCChroma = None  # type: ignore
+
+# Local runtime configuration -------------------------------------------------
+
 from backend.app.config import get_settings
 
 # Cache the settings instance once at import time – these values are immutable
@@ -38,6 +51,26 @@ logger = logging.getLogger(__name__)
 _client: ClientAPI | None = None
 _collection: Collection | None = None
 _embedding: EmbeddingFunction[Any] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Max-Marginal Relevance helper
+# ---------------------------------------------------------------------------
+
+
+def _mmr_collection_wrapper():
+    """Return a **LangChain** Chroma wrapper for the shared collection.
+
+    We construct the wrapper lazily to avoid the import cost when LangChain is
+    unavailable (e.g. minimal CI jobs).  The wrapper itself is a very thin
+    proxy, so rebuilding it for each search call is cheap (<1 ms).
+    """
+
+    if LCChroma is None:  # LangChain missing – caller must fall back.
+        raise RuntimeError("langchain unavailable")
+
+    col = _get_collection()
+    return LCChroma(collection=col, embedding_function=_get_embedding())
 
 
 def _get_client() -> ClientAPI:
@@ -138,16 +171,58 @@ async def search(
     without adding a heavyweight dependency on LangChain in the hot path.
     """
 
+
     top_k = k or settings.SEARCH_TOP_K
     oversample = settings.SEARCH_MMR_OVERSAMPLE
 
-    # Guard against obviously bad caller input — negative or zero k.
     if top_k <= 0:
         return []
 
-    # ---------------------------------------------------------------------
-    # Fetch *top_k × oversample* raw candidates from Chroma
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Preferred path – use LangChain’s built-in MMR which balances
+    # relevance vs novelty and already de-duplicates.
+    # ------------------------------------------------------------------
+
+    if LCChroma is not None:
+
+        def _run_mmr() -> list[Any]:  # type: ignore[valid-type]
+            store = _mmr_collection_wrapper()
+            fetch_k = top_k * oversample
+            # Chroma’s LC wrapper exposes .max_marginal_relevance_search()
+            return store.max_marginal_relevance_search(
+                query, k=top_k, fetch_k=fetch_k, filter=where, lambda_mult=settings.SEARCH_MMR_LAMBDA
+            )
+
+        try:
+            docs = await anyio.to_thread.run_sync(_run_mmr)
+        except Exception:
+            logger.warning("Chroma MMR search failed – falling back", exc_info=True)
+            docs = []
+
+        if docs:
+            results: list[SearchHit] = []
+            for d in docs:
+                meta = d.metadata or {}
+                sim = (
+                    meta.get("relevance_score")
+                    or meta.get("similarity")
+                    or meta.get("score")
+                    or 1.0
+                )
+                results.append(
+                    SearchHit(
+                        text=d.page_content,
+                        similarity=float(sim),
+                        ts=meta.get("ts"),
+                        role=meta.get("role"),
+                    )
+                )
+            return results
+
+    # ------------------------------------------------------------------
+    # Fallback – legacy dense search with manual uniqueness filter.
+    # ------------------------------------------------------------------
+
     try:
         col = _get_collection()
         timeout_ms = int(os.environ.get("CHROMA_TIMEOUT_MS", "100"))
@@ -173,19 +248,14 @@ async def search(
         logger.warning("Chroma search failed", exc_info=True)
         return []
 
-    # ---------------------------------------------------------------------
-    # Convert raw Chroma response → SearchHit list while enforcing uniqueness
-    # ---------------------------------------------------------------------
     docs = (res.get("documents") or [[]])[0]
     dists = (res.get("distances") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
 
     seen: Set[str] = set()
     results: list[SearchHit] = []
-
     for i, doc in enumerate(docs):
-        # Skip duplicates – the very property MMR aims to minimise.
-        if doc in seen:
+        if doc in seen and len(results) + (len(docs) - i - 1) >= top_k:
             continue
         seen.add(doc)
 
@@ -202,7 +272,6 @@ async def search(
                 role=meta.get("role"),
             )
         )
-
         if len(results) >= top_k:
             break
 
