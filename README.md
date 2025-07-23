@@ -141,7 +141,7 @@ error so mis-configured deployments fail fast.
 ### Vector Store
 
 The `chroma` service acts as the vector store side-car.  Data persists under
-`./.chroma-data` on the host so the index survives container restarts.  Remove
+`./data/chromadb` on the host so the index survives container restarts.  Remove
 that directory to wipe all embeddings:
 
 The project pins **Chroma 0.5.23** on both the Python client and the Docker

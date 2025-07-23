@@ -25,8 +25,11 @@ services:
       CHROMA_SERVER_TELEMETRY_ENABLED: 'false'
       CHROMA_SERVER_AUTH_PROVIDER: none
     volumes:
-      # Persist Chroma data locally
-      - ./.chroma-data:/chroma/.chroma
+      # Persist Chroma data locally.  As of Chroma 0.5.x the server stores
+      # its SQLite database + HNSW indexes inside /chroma/chroma/ (without the dot).
+      # Keep the host files under data/chromadb/* for clarity rather than a
+      # hidden dot-folder.
+      - ./data/chromadb:/chroma/chroma
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 8000"]
       interval: 10s

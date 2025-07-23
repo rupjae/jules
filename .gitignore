@@ -68,4 +68,5 @@ Thumbs.db
 
 # Persisted conversation checkpoints (mounted in container)
 data/
-/.chroma-data/
+# Vector-store persistence mounted from docker-compose
+data/chromadb/
