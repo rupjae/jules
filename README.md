@@ -86,9 +86,13 @@ Then open http://localhost:8000 to chat with **Jules**.
   ]
   ```
 • **GET /api/chat/search?thread_id=<id>&query=<text>**
-  Vector similarity search backed by Chroma. Omit `thread_id` for a global
-  search. Each hit includes a `similarity` score (0–1, higher means closer)
-  rounded to 4 decimals and may be filtered via `min_similarity`. Example:
+Vector similarity search backed by Chroma. Omit `thread_id` for a global
+search. Results are chosen via **Max-Marginal Relevance (MMR)** to balance
+relevance and diversity (configurable through `SEARCH_MMR_*` settings). When
+LangChain is not installed the server transparently falls back to the previous
+dense K-NN search with light de-duplication.  Each hit includes a `similarity`
+score (0–1, higher means closer) rounded to 4 decimals and may be filtered via
+`min_similarity`. Example:
 
 ```
 /api/chat/search?query=hello&min_similarity=0.8

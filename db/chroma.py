@@ -58,6 +58,10 @@ _embedding: EmbeddingFunction[Any] | None = None
 # ---------------------------------------------------------------------------
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
 def _mmr_collection_wrapper():
     """Return a **LangChain** Chroma wrapper for the shared collection.
 
@@ -69,8 +73,22 @@ def _mmr_collection_wrapper():
     if LCChroma is None:  # LangChain missing – caller must fall back.
         raise RuntimeError("langchain unavailable")
 
+    # `langchain.vectorstores.Chroma` signature changed; the constructor now
+    # expects *collection_name*|*client* instead of a ready `Collection`.
+    # Re-create a wrapper that points at the already-initialised collection to
+    # avoid maintaining separate storage.
+
     col = _get_collection()
-    return LCChroma(collection=col, embedding_function=_get_embedding())
+
+    try:
+        return LCChroma(collection=col, embedding_function=_get_embedding())  # type: ignore[arg-type]
+    except TypeError:
+        # Fall back to newer signature – supply client + existing name.
+        return LCChroma(
+            client=_get_client(),
+            collection_name=col.name,
+            embedding_function=_get_embedding(),
+        )
 
 
 def _get_client() -> ClientAPI:
@@ -259,7 +277,8 @@ async def search(
             continue
         seen.add(doc)
 
-        meta = metas[i] if i < len(metas) else {}
+        raw_meta = metas[i] if i < len(metas) else None
+        meta = raw_meta or {}
         dist = dists[i]
         dist = max(dist, 1e-9)
         similarity = 1 / (1 + dist)
