@@ -19,6 +19,8 @@ jobs:
         run: |
           poetry config virtualenvs.create false
           poetry install --no-interaction --no-root
+      - name: Validate lock file & pyproject
+        run: poetry check
       - name: Start services
         run: docker compose up -d chroma
       - name: Run tests

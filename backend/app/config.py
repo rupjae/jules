@@ -10,7 +10,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings  # type: ignore
-from pydantic import Field  # type: ignore
+from pydantic import Field, conint, confloat  # type: ignore
 
 # Load variables from a .env file if present
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
@@ -35,14 +35,12 @@ class Settings(BaseSettings):
     # Vector search parameters (defaults tuned for small-scale demos).
     # ---------------------------------------------------------------------
     # Number of final results returned to callers.
-    SEARCH_TOP_K: int = Field(8, env="SEARCH_TOP_K")
-    # Oversampling factor when performing MMR – the actual number of vectors
-    # fetched from the DB is k * oversample to give the algorithm more
-    # candidates to choose from.
-    SEARCH_MMR_OVERSAMPLE: int = Field(4, env="SEARCH_MMR_OVERSAMPLE")
-    # λ trade-off parameter between similarity (1→purely relevance-based) and
-    # diversity (0→purely novelty-based).
-    SEARCH_MMR_LAMBDA: float = Field(0.5, env="SEARCH_MMR_LAMBDA")
+    # Vector search configuration ------------------------------------------------
+    SEARCH_TOP_K: conint(ge=1) = Field(8, env="SEARCH_TOP_K")
+    # Oversampling factor – we first fetch TOP_K * oversample candidates for MMR.
+    SEARCH_MMR_OVERSAMPLE: conint(ge=1) = Field(4, env="SEARCH_MMR_OVERSAMPLE")
+    # λ ∈ [0,1] – 0→novelty-only, 1→relevance-only.
+    SEARCH_MMR_LAMBDA: confloat(ge=0.0, le=1.0) = Field(0.5, env="SEARCH_MMR_LAMBDA")
 
     class Config:
         case_sensitive = False

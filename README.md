@@ -38,7 +38,11 @@ An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and 
    - `OPENAI_API_KEY=<your OpenAI key>` (required)
    - `JULES_AUTH_TOKEN=<optional bearer token>` (commented out by default; leave unset to disable auth)
    - `CHROMA_HOST=chroma` target Chroma service host
-   - `CHROMA_TIMEOUT_MS=100` optional request timeout
+ - `CHROMA_TIMEOUT_MS=100` optional request timeout
+  - **Vector search parameters** (optional – leave defaults unless you need to tune)
+    - `SEARCH_TOP_K` (default `8`): number of documents returned by `/api/chat/search`.
+    - `SEARCH_MMR_OVERSAMPLE` (default `4`): when using Maximal Marginal Relevance, we first fetch `TOP_K * OVERSAMPLE` candidates and then re-rank.
+    - `SEARCH_MMR_LAMBDA` (default `0.5`): trade-off between relevance (`1.0`) and novelty (`0.0`).
 2. Install Python deps & run backend:
 
 ```bash
