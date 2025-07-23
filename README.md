@@ -118,6 +118,22 @@ Open your browser:
 The compose file mounts `backend/app`, `db`, and `jules` into the container so
 any local changes reload automatically.
 
+## MMR search settings
+
+Jules uses *Maximal Marginal Relevance* (MMR) re-ranking to avoid returning
+near-duplicate chunks when answering questions. Three environment variables let
+you fine-tune the behaviour without touching code:
+
+| Variable | Type & Bounds | Default | Description |
+|----------|--------------|---------|-------------|
+| `SEARCH_TOP_K` | integer ≥ 1 | `8` | Final number of documents returned to the caller. |
+| `SEARCH_MMR_OVERSAMPLE` | integer ≥ 1 | `4` | We first fetch `TOP_K × OVERSAMPLE` candidates, then run MMR to pick the best *TOP_K*. |
+| `SEARCH_MMR_LAMBDA` | float 0-1 | `0.5` | Trade-off between relevance (`1.0`) and novelty (`0.0`). |
+
+All three variables are validated at startup using Pydantic. Supplying an
+out-of-range value (e.g. `SEARCH_MMR_LAMBDA=1.3`) aborts launch with a clear
+error so mis-configured deployments fail fast.
+
 ### Vector Store
 
 The `chroma` service acts as the vector store side-car.  Data persists under
