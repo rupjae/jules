@@ -59,7 +59,11 @@ persists across restarts.
 Then open http://localhost:8000 to chat with **Jules**.
 
 ### API Endpoints
-• **GET /api/chat?thread_id=<id>&message=<text>**
+• **GET /api/chat/v6?thread_id=<id>&message=<text>** *(LangGraph v6 – retrieval-aware)*  
+  Same streaming interface as v5 but enhanced with on-demand Chroma retrieval and
+  cheat-sheet injection governed by `config/agents.toml`.
+
+• **GET /api/chat?thread_id=<id>&message=<text>** *(v5)*
   Streams chat completions via Server-Sent Events.  On the first request for a new thread,
   the `X-Thread-ID` response header provides the generated session ID.  Include the same
   `thread_id` (query or `X-Thread-ID` header) on subsequent calls to continue the conversation.
