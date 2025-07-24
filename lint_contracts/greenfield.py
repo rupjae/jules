@@ -9,8 +9,8 @@ in ``pyproject.toml``.
 
 from __future__ import annotations
 
-from importlinter import Contract as ImportContract  # type: ignore[import]
-from importlinter.domain.contract import ForbiddenContract  # type: ignore[import]
+from importlinter import Contract as ImportContract  # type: ignore[import-not-found]
+from importlinter.domain.contract import ForbiddenContract  # type: ignore[import-not-found]
 
 
 Contract = ImportContract(

@@ -51,3 +51,9 @@ exclude = [
     "docs/*",
     "notebook/*",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+exclude = "(?x)(^tests/|^db/|^backend/app/(routers|graphs|agents)/|^backend/app/checkpointer.py|^lint_contracts/)"
+follow_imports = "skip"

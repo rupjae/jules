@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-import typer  # type: ignore[import]
+import time
+import typer
 
 app = typer.Typer(add_completion=False)
 
@@ -12,7 +13,6 @@ def run_worker(
 ) -> None:
     """Start the background job worker."""
     os.environ["JULES_DEBUG"] = "1" if debug else "0"
-    import time
 
     if debug:
         time.sleep(3600)

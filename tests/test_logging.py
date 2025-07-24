@@ -1,12 +1,14 @@
 import json
 import logging
+from pathlib import Path
+from pytest import MonkeyPatch
 
 from rich.logging import RichHandler
 
 from jules.logging import TRACE, configure_logging
 
 
-def test_trace_level(tmp_path, monkeypatch) -> None:
+def test_trace_level(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     configure_logging(True)
     path = configure_logging(True)

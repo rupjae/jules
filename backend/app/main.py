@@ -26,10 +26,12 @@ configure_logging(settings.debug)
 app = FastAPI(title="Jules API", version="1.0.0")
 
 
-@app.on_event("startup")
 async def _init_graph() -> None:
     app.state.checkpointer = get_checkpointer()
     app.state.graph = build_graph()
+
+
+app.add_event_handler("startup", _init_graph)
 
 
 # Allow frontend origin during development

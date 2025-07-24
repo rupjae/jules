@@ -20,9 +20,9 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 try:
-    import tomllib  # type: ignore
+    import tomllib  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover – Python < 3.11
-    import tomli as tomllib  # type: ignore
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 # ---------------------------------------------------------------------------
 # Locate the shared *config/agents.toml* file.

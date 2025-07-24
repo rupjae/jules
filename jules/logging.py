@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable, ParamSpec, TypeVar
+from typing import Callable, ParamSpec, TypeVar, Tuple, cast
 
 from rich.logging import RichHandler
 
@@ -61,12 +61,10 @@ class JsonLinesHandler(logging.Handler):
             "code_path": getattr(record, "code_path", record.pathname),
         }
         if record.exc_info:
-            payload.update(
-                {
-                    "exc_type": record.exc_info[0].__name__,
-                    "exc_msg": str(record.exc_info[1]),
-                }
+            exc_type, exc_val, _ = cast(
+                Tuple[type[BaseException], BaseException, object], record.exc_info
             )
+            payload.update({"exc_type": exc_type.__name__, "exc_msg": str(exc_val)})
         trace_id = getattr(record, "trace_id", None)
         if trace_id:
             payload["trace_id"] = trace_id
@@ -99,7 +97,7 @@ class JsonLinesHandler(logging.Handler):
 
 
 def _purge_old_logs(directory: Path, keep: int = 10) -> None:
-    pairs: Iterable[Path] = sorted(directory.glob("jules-*.log"))
+    pairs = sorted(directory.glob("jules-*.log"))
     excess = len(pairs) - keep
     if excess <= 0:
         return
@@ -116,8 +114,9 @@ def configure_logging(debug: bool = False) -> Path:
     log_dir.mkdir(exist_ok=True)
 
     root = logging.getLogger()
-    if getattr(root, "_configured", False):
-        return Path(root._configured)
+    existing = cast(str | None, getattr(root, "_configured", None))
+    if existing:
+        return Path(existing)
 
     _purge_old_logs(log_dir)
 
