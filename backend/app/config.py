@@ -10,6 +10,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings  # type: ignore
+import os
 from pydantic import Field, conint, confloat  # type: ignore
 
 # Load variables from a .env file if present
@@ -41,6 +42,10 @@ class Settings(BaseSettings):
     SEARCH_MMR_OVERSAMPLE: conint(ge=1) = Field(4, env="SEARCH_MMR_OVERSAMPLE")
     # λ ∈ [0,1] – 0→novelty-only, 1→relevance-only.
     SEARCH_MMR_LAMBDA: confloat(ge=0.0, le=1.0) = Field(0.5, env="SEARCH_MMR_LAMBDA")
+
+    debug: bool = Field(
+        default_factory=lambda: os.getenv("JULES_DEBUG", "0") in {"1", "true", "yes"}
+    )
 
     class Config:
         case_sensitive = False
