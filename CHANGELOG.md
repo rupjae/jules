@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+
+## [1.0.1] – 2025-07-24
+
+### Fixed
+* GET-based SSE endpoint for browser compatibility.
+* Missing `search` key in `ChatState` TypedDict.
+* Correct SSE framing for `info_packet` event.
+
+### Added
+* Configurable RetrievalAgent heuristics.
+* Extra unit tests for search gating.
+
 ## [1.0.0] – 2025-07-24
 
 ### Added

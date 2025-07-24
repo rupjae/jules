@@ -26,7 +26,6 @@ from sse_starlette import sse as sse_mod
 
 from ..config import Settings, get_settings
 from .graph_runner import run_graph
-from pydantic import BaseModel
 import datetime
 
 
@@ -303,28 +302,38 @@ async def chat_search(
 # ---------------------------------------------------------------------------
 
 
-class ChatRequest(BaseModel):
-    prompt: str
+# ---------------------------------------------------------------------------
+# Streaming endpoint (GET-based for native browser EventSource support)
+# ---------------------------------------------------------------------------
 
 
-@router.post("/chat/stream")
-async def chat_stream(req: ChatRequest, request: Request):
-    """Stream assistant tokens (and final info_packet) via SSE."""
+@router.get("/chat/stream")
+async def chat_stream(request: Request, prompt: str = Query(..., description="User prompt")):
+    """Stream assistant tokens (and a final *info_packet*) via SSE.
 
-    # build graph on-demand – created at startup in main.py too
+    The endpoint is **GET**-only so that browsers can establish an EventSource
+    without CORS or polyfill workarounds.  The *prompt* is provided as a query
+    string parameter – body payloads are explicitly rejected by FastAPI's
+    signature (no pydantic model argument).
+    """
+
+    # Build LangGraph instance – created at startup and cached on app state
     graph = request.app.state.graph
-    state = {"prompt": req.prompt, "info_packet": None}
+    state = {"prompt": prompt, "info_packet": None}
 
     async def event_generator():
-        last_info = None
+        last_info: str | None = None
+
         async for output in run_graph(graph, state):
             if "partial" in output:
                 yield f"data: {output['partial']}\n\n"
             if "info_packet" in output:
                 last_info = output["info_packet"]
 
-        # Graph finished – emit info_packet event
-        yield "event: info_packet\n"
+        # Graph finished – emit dedicated *info_packet* event with proper SSE
+        # framing: blank line after the directive so browsers dispatch the
+        # event correctly.
+        yield "event: info_packet\n\n"
         yield f"data: {last_info if last_info is not None else 'null'}\n\n"
 
     return EventSourceResponse(event_generator())

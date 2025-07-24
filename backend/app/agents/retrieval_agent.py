@@ -139,8 +139,26 @@ async def search_and_summarise(prompt: str) -> str:
 def _trim_tokens(text: str, limit: int | None) -> str:
     """Return *text* truncated to *limit* tokens (when both libs present)."""
 
-    if limit is None or not _tiktoken_available:
+    # ------------------------------------------------------------------
+    # Fast-path – when *tiktoken* is available we can accurately trim by token
+    # count.  Otherwise fall back to an *approximate* but safe behaviour that
+    # never returns more than *limit* space-separated words.  This guarantees
+    # the caller gets at most *limit* «tokens» even in minimal environments
+    # where the library is missing.
+    # ------------------------------------------------------------------
+
+    if limit is None:
         return text
+
+    if not _tiktoken_available:
+        # Cheap heuristic: assume 1 word ≈ 1 token.  This intentionally favours
+        # safety over accuracy – we may truncate slightly more than necessary
+        # but will **never** exceed the requested limit when tiktoken is not
+        # installed.
+        words = text.split()
+        if len(words) <= limit:
+            return text
+        return " ".join(words[:limit])
 
     tokens = ENC.encode(text)  # type: ignore[arg-type]
     if len(tokens) <= limit:
