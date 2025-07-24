@@ -330,10 +330,39 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
             if "info_packet" in output:
                 last_info = output["info_packet"]
 
-        # Graph finished – emit dedicated *info_packet* event with proper SSE
-        # framing: blank line after the directive so browsers dispatch the
-        # event correctly.
-        yield "event: info_packet\n\n"
-        yield f"data: {last_info if last_info is not None else 'null'}\n\n"
+        # Graph finished – emit single *info_packet* event by streaming the
+        # *event* and *data* lines as one logical block (no blank line until
+        # after the data) so they belong to the same SSE event.
+
+        # According to the SSE spec each event is separated by a *blank line*.
+        # Therefore we must not send the terminating "\n\n" after the
+        # ``event:`` directive alone – doing so would create an event without
+        # a *data:* field (observed as "data: null" in the UI).  Instead we
+        # write both lines back-to-back and finish with the mandatory blank
+        # line.
+
+        # Emit *info_packet* only when the graph produced one – callers may
+        # disable that feature and rely on the default *None* value.  In that
+        # case we avoid sending a meaningless event that would clutter the
+        # client-side event stream.
+
+
+        if last_info is not None:
+            yield f"event: info_packet\ndata: {last_info}\n\n"
+
+        # Keep the SSE connection alive with periodic comments so the browser
+        # does **not** aggressively reconnect (which manifests as an endless
+        # request loop on the server).  The client will close the connection
+        # on its side once it processed the final info_packet.
+
+        try:
+            while True:
+                await asyncio.sleep(15)
+                # SSE comment line – ignored by the client but prevents idle
+                # TCP timeouts and keeps the *readyState* at OPEN.
+                yield ":\n\n"
+        except asyncio.CancelledError:
+            # Client disconnected – exit quietly.
+            return
 
     return EventSourceResponse(event_generator())
