@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [1.0.0] – 2025-07-24
+
+### Added
+* Retrieval-aware two-stage RAG pipeline (`backend.app.graphs.next_gen`).
+* Config-driven `config/agents.toml` with model + search parameters.
+* Info-packet UI toggle (frontend) plus SSE `info_packet` event.
+
+### Removed
+* All legacy *graph_v* code, docs, and tests.
+
+
 ### Changed
 * Added validated MMR tuning environment variables (`SEARCH_TOP_K`, `SEARCH_MMR_OVERSAMPLE`, `SEARCH_MMR_LAMBDA`) with sensible defaults.
 * Pinned LangChain monolith to `0.3.26` (includes MMR); removed duplicate `langchain-core`/`langchain-community` pins. `langchain-openai` kept as it houses `ChatOpenAI`.

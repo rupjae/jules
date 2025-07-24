@@ -1,0 +1,33 @@
+# Retrieval-aware Architecture (v1.0.0)
+
+## Executive overview
+
+Traditional Jules prompts embedded the entire memory into one system prompt.  
+That approach is brittle and expensive once the knowledge base grows.  Version 1.0.0 introduces a **two-stage Retrieval-Augmented Generation (RAG)** pipeline:
+
+```
+User ─▶ RetrievalAgent (gpt-4o-mini)
+├─ need_search? ──╴ no ╶──▶ JulesAgent (gpt-4o) ─▶ Reply
+╰─ yes ╮
+╰▶ ChromaSearch (k=5) ─▶ summarise ≤150 tokens (info-packet)
+╰───────────────▶ JulesAgent
+```
+
+Key benefits:
+
+* **Cost-efficient** – small model decides whether we need external context.
+* **Bounded context window** – summarisation caps additional tokens at 150.
+* **Transparency** – the UI can display the *info-packet* via a toggle so power-users can audit the source material.
+* **Single source of truth** – `config/agents.toml` holds all tunables (models, `k_hits`, token limits).
+
+Terminology:
+
+| Term | Description |
+|------|-------------|
+| RetrievalAgent | Lightweight GPT-4o-mini tool that (a) decides if search is needed and (b) produces a bullet-point summary of the Chroma passages. |
+| Info-packet | ≤150-token bullet list that carries distilled context into the final LLM prompt. |
+| LangGraph node | Each logical step in the pipeline (decision, search, LLM). Implemented in `backend/app/graphs/next_gen.py`. |
+| SSE events | `/api/chat/stream` pushes incremental `data:` tokens plus a final `info_packet` event so the frontend can render background notes. |
+
+See `docs/arch/next_gen_graph.md` for a Mermaid sequence diagram.
+

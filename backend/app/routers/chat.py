@@ -25,6 +25,8 @@ from sse_starlette.sse import EventSourceResponse
 from sse_starlette import sse as sse_mod
 
 from ..config import Settings, get_settings
+from .graph_runner import run_graph
+from pydantic import BaseModel
 import datetime
 
 
@@ -296,3 +298,33 @@ async def chat_search(
             results.append(item)
 
     return results
+# ---------------------------------------------------------------------------
+# RAG stream endpoint (new /chat/stream path)
+# ---------------------------------------------------------------------------
+
+
+class ChatRequest(BaseModel):
+    prompt: str
+
+
+@router.post("/chat/stream")
+async def chat_stream(req: ChatRequest, request: Request):
+    """Stream assistant tokens (and final info_packet) via SSE."""
+
+    # build graph on-demand – created at startup in main.py too
+    graph = request.app.state.graph
+    state = {"prompt": req.prompt, "info_packet": None}
+
+    async def event_generator():
+        last_info = None
+        async for output in run_graph(graph, state):
+            if "partial" in output:
+                yield f"data: {output['partial']}\n\n"
+            if "info_packet" in output:
+                last_info = output["info_packet"]
+
+        # Graph finished – emit info_packet event
+        yield "event: info_packet\n"
+        yield f"data: {last_info if last_info is not None else 'null'}\n\n"
+
+    return EventSourceResponse(event_generator())

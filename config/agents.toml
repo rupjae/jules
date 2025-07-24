@@ -1,0 +1,8 @@
+[retrieval]
+model = "gpt-4o-mini"
+k_hits = 5
+cheat_tokens = 150
+
+[jules]
+model = "gpt-4o"
+

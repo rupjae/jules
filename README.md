@@ -4,6 +4,14 @@
 
 An AI-powered chatbot built with LangChain + LangGraph on a FastAPI backend and a Next.js (React, TypeScript, Material-UI) frontend.
 
+## Architecture (v1.0.0)
+
+The 1.0 release ships a retrieval-aware RAG pipeline.  A lightweight GPT-4o-mini **RetrievalAgent** decides whether semantic search is necessary.  If so, the agent fetches the top-5 Chroma passages, distils them into a ≤150-token *info-packet*, and passes that along with the original prompt to the main **JulesAgent** (GPT-4o).
+
+• Back-end implementation: `backend/app/graphs/next_gen.py`  
+• High-level write-up: [`docs/arch/overview_rag.md`](docs/arch/overview_rag.md)  
+• Mermaid sequence diagram: [`docs/arch/next_gen_graph.md`](docs/arch/next_gen_graph.md)
+
 ## Project layout
 
 ```
