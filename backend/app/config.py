@@ -10,7 +10,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings  # type: ignore
-from pydantic import Field, conint, confloat  # type: ignore
+from pydantic import Field, conint, confloat, validator  # type: ignore
 
 # Load variables from a .env file if present
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     SEARCH_MMR_OVERSAMPLE: conint(ge=1) = Field(4, env="SEARCH_MMR_OVERSAMPLE")
     # λ ∈ [0,1] – 0→novelty-only, 1→relevance-only.
     SEARCH_MMR_LAMBDA: confloat(ge=0.0, le=1.0) = Field(0.5, env="SEARCH_MMR_LAMBDA")
+
+    debug: bool = Field(False, alias="JULES_DEBUG")
+
+    @validator("debug", pre=True)
+    def _boolify(cls, v: str | bool) -> bool:  # noqa: D401
+        """Parse truthy strings like '1', 'true', 'yes'."""
+        if isinstance(v, bool):
+            return v
+        return str(v).lower() in {"1", "true", "yes"}
 
     class Config:
         case_sensitive = False

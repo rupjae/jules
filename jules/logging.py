@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import functools
+import json
 import logging
-from typing import Callable, ParamSpec, TypeVar
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Iterable, ParamSpec, TypeVar
+
+from rich.logging import RichHandler
 
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
@@ -29,4 +34,80 @@ def trace(func: Callable[P, R]) -> Callable[P, R]:
     return wrapper
 
 
-__all__ = ["TRACE", "trace"]
+class JsonLinesHandler(logging.Handler):
+    """Write log records as JSON lines."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._fh = path.open("a", encoding="utf-8")
+
+    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - trivial
+        payload = {
+            "ts_epoch": record.created,
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+            "code_path": getattr(record, "code_path", ""),
+        }
+        if record.exc_info:
+            payload.update(
+                {
+                    "exc_type": record.exc_info[0].__name__,
+                    "exc_msg": str(record.exc_info[1]),
+                }
+            )
+        trace_id = getattr(record, "trace_id", None)
+        if trace_id:
+            payload["trace_id"] = trace_id
+
+        json.dump(payload, self._fh)
+        self._fh.write("\n")
+        self._fh.flush()
+
+
+def _purge_old_logs(directory: Path, keep: int = 10) -> None:
+    pairs: Iterable[Path] = sorted(directory.glob("jules-*.log"))
+    excess = len(pairs) - keep
+    if excess <= 0:
+        return
+    for path in pairs[:excess]:
+        jsonl = path.with_suffix(".jsonl")
+        path.unlink(missing_ok=True)
+        jsonl.unlink(missing_ok=True)
+
+
+def configure_logging(debug: bool = False) -> Path:
+    """Configure console + file logging and return the log file path."""
+
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    _purge_old_logs(log_dir)
+
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_path = log_dir / f"jules-{ts}.log"
+    jsonl_path = log_path.with_suffix(".jsonl")
+
+    level = TRACE if debug else logging.INFO
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    fmt = "%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d - %(message)s"
+    handlers: list[logging.Handler] = [
+        RichHandler(rich_tracebacks=True),
+        logging.FileHandler(log_path, encoding="utf-8"),
+        JsonLinesHandler(jsonl_path),
+    ]
+
+    for h in handlers:
+        if isinstance(h, RichHandler):
+            h.setLevel(level)
+        else:
+            h.setLevel(logging.DEBUG)
+        if not isinstance(h, JsonLinesHandler):
+            h.setFormatter(logging.Formatter(fmt))
+        root.addHandler(h)
+
+    return log_path
+
+
+__all__ = ["TRACE", "trace", "configure_logging"]

@@ -1,0 +1,34 @@
+version: "3.9"
+
+x-debug-env: &debug-env
+  JULES_DEBUG: "1"
+
+x-debug-logging: &debug-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  jules:
+    environment:
+      <<: *debug-env
+    command:
+      - backend/cli.py
+      - run-server
+      - --debug
+    logging: *debug-logging
+
+  worker:
+    environment:
+      <<: *debug-env
+    command:
+      - worker/cli.py
+      - run-worker
+      - --debug
+    logging: *debug-logging
+
+  chroma:
+    environment:
+      RUST_LOG: debug
+    logging: *debug-logging
