@@ -27,7 +27,28 @@ Terminology:
 | RetrievalAgent | Lightweight GPT-4o-mini tool that (a) decides if search is needed and (b) produces a bullet-point summary of the Chroma passages. |
 | Info-packet | ≤150-token bullet list that carries distilled context into the final LLM prompt. |
 | LangGraph node | Each logical step in the pipeline (decision, search, LLM). Implemented in `backend/app/graphs/next_gen.py`. |
-| SSE events | `/api/chat/stream` pushes incremental `data:` tokens plus a final `info_packet` event so the frontend can render background notes. |
+| SSE events | `/api/chat/stream?prompt=<text>` (GET) pushes incremental `data:` tokens plus a final `info_packet` event so the frontend can render background notes. |
+
+### Quick client example
+
+```ts
+// Native browser EventSource usage (no polyfill required)
+const prompt = "Summarise the last board meeting and cite the source";
+
+const es = new EventSource(
+  `/api/chat/stream?prompt=${encodeURIComponent(prompt)}`
+);
+
+es.onmessage = (e) => console.log("token", e.data);
+
+es.addEventListener("info_packet", (e: MessageEvent) => {
+  const notes = e.data === "null" ? null : e.data;
+  console.log("info_packet", notes);
+});
+```
+
+The POST-based code snippet found in early drafts is now obsolete – the backend
+rejects body payloads and only supports **GET** requests for maximum
+compatibility with the native `EventSource` API.
 
 See `docs/arch/next_gen_graph.md` for a Mermaid sequence diagram.
-
