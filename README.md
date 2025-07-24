@@ -12,6 +12,8 @@ The 1.0 release ships a retrieval-aware RAG pipeline.  A lightweight GPT-4o-mini
 • High-level write-up: [`docs/arch/overview_rag.md`](docs/arch/overview_rag.md)  
 • Mermaid sequence diagram: [`docs/arch/next_gen_graph.md`](docs/arch/next_gen_graph.md)
 
+• Debugging guide: [`docs/development/debugging.md`](docs/development/debugging.md)
+
 ## Project layout
 
 ```

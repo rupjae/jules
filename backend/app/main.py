@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import Depends, HTTPException, Request, status
 
 from .config import Settings, get_settings
+from jules.logging import configure_logging
 
 # `memory.py` lives at project root.  Use absolute import so it works regardless
 # of where the `app` package is located on the import path (Docker image copies
@@ -17,6 +18,8 @@ from .graphs.next_gen import build_graph
 from .routers import chat as chat_router
 
 
+settings = get_settings()
+configure_logging(settings.debug)
 app = FastAPI(title="Jules API", version="1.0.0")
 
 
