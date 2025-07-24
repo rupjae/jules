@@ -283,7 +283,16 @@ async def chat_post_legacy(payload: ChatRequest) -> ChatResponse:  # noqa: D401
     )
 
     graph = _graphs.get_graph(version)
-    out: dict = await graph.ainvoke({"user_message": payload.message})  # type: ignore[arg-type]
+
+    # v5 graphs require a *thread_id* in the configurable section for the
+    # checkpoint saver.  When callers omit the field (e.g. unknown version or
+    # legacy default), we generate a random UUID that is *not* persisted – the
+    # request is effectively stateless.
+    cfg: dict | None = None
+    if version != "v6":
+        cfg = {"configurable": {"thread_id": str(uuid4())}}
+
+    out: dict = await graph.ainvoke({"user_message": payload.message}, cfg)  # type: ignore[arg-type]
 
     reply: str = out.get("reply", "")
     cheat_sheet: str | None = out.get("cheat_sheet")

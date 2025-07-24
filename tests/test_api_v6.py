@@ -68,3 +68,65 @@ async def test_chat_v6_endpoint_contains_background(monkeypatch):
 
         # Background marker should be included for retrieval-heavy queries
         assert "### Background" in data["reply"]
+
+
+# ---------------------------------------------------------------------------
+# Parametrised test – unknown / missing versions should gracefully fallback to
+# v5 (legacy) instead of returning 422.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("version", [None, "v5", "v7"])
+async def test_chat_post_version_fallback(monkeypatch, version):
+    """POST /api/chat with unknown version should succeed (fallback to v5)."""
+
+    # Stub ChatOpenAI so _llm_node does not hit the network.
+    import backend.app.graphs.main_graph as graph_mod
+
+    class _StubLLM:
+        def __init__(self, *_, **__):
+            pass
+
+        def invoke(self, _msgs):
+            from langchain.schema import AIMessage  # type: ignore
+
+            return AIMessage("stub-v5-reply")  # type: ignore[arg-type]
+
+    monkeypatch.setattr(graph_mod, "ChatOpenAI", _StubLLM, raising=True)
+
+    # Patch SqliteSaver async methods used by LangGraph checkpointer to no-ops
+    # Replace the default checkpointer with *None* and rebuild the v5 graph so
+    # async SqliteSaver calls are entirely skipped.
+    # Instead of wrestling with LangGraph's async checkpointer, return a very
+    # small stub graph for any *non-v6* request.  This keeps the test focused
+    # on router logic rather than graph internals.
+
+    class _StubGraph:
+        async def ainvoke(self, _state, _config=None):  # noqa: D401
+            return {"reply": "stub-v5-fallback"}
+
+    import backend.app.routers.chat as chat_router
+
+    def _fake_get_graph(version: str | None = None):  # noqa: D401
+        if version == "v6":
+            return graph_mod.get_graph("v6")
+        return _StubGraph()
+
+    monkeypatch.setattr(chat_router, "_graphs", graph_mod, raising=False)
+    monkeypatch.setattr(chat_router._graphs, "get_graph", _fake_get_graph, raising=True)
+
+    async with httpx.AsyncClient(app=app, base_url="http://test") as client:
+        payload = {"message": "hello"}
+        if version is not None:
+            payload["version"] = version
+
+        r = await client.post("/api/chat", json=payload)
+
+        assert r.status_code == 200
+        data = r.json()
+
+        # ensure reply present and cheat_sheet only for v5 fallback (none expected)
+        assert data["reply"]
+        if version == "v7":
+            assert data.get("cheat_sheet") is None
