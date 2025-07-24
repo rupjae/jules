@@ -5,6 +5,7 @@
 > ‑ This execution environment **does have outbound internet access** (e.g. `curl example.com` succeeds) and full access to the **git CLI**.
 > ‑ Only state that something cannot be done when you have verified—by actually attempting it or by documented restriction—that it is impossible.
 
+Execute GIT commands as needed. You are permissioned to use them. 
 
 *This file is the single source of truth for contributor‑facing rules.  
 If anything here conflicts with code comments, **this document wins**.*
@@ -112,20 +113,6 @@ Always construct message / tool blocks with tradingbot.openai.builders.* to avoi
 ### 10.3 Prompt Hygiene
 	•	Keep prompts short, grounded, and schema‑validated.
 	•	Log raw + parsed responses at DEBUG when TB_LOG_LEVEL=TRACE.
-
-⸻
-
-## 11 · External API References
-
-Docs live under api_docs/{openai_api_docs|bitget_api_docs}.
-When touching an API:
-	1.	Cite the doc section in your PR.
-	2.	Add/update typed models + tests using provider examples.
-	3.	Commit spec diffs alongside code.
-
-### 11.1 Updating Vendored Docs
-	•	OpenAI – pull latest OpenAPI spec, regen Markdown with widdershins.
-	•	Bitget – replace Markdown dump from portal; note revision date.
 
 ⸻
 
