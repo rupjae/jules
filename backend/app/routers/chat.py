@@ -17,6 +17,30 @@ import anyio
 from db.chroma import save_message, StoredMsg, SearchHit
 from db import sqlite
 from ..schemas import ChatMessageIn
+# v6 JSON POST models
+from pydantic import BaseModel
+# NOTE: Validation intentionally allows *any* string for ``version`` so that
+# backend routing can gracefully fall back to the default graph instead of
+# FastAPI aborting with a 422.  Supported values are resolved by
+# ``backend.app.graphs.main_graph.get_graph``.
+# Optional already imported above; avoid duplicate import
+
+
+class ChatRequest(BaseModel):
+    """Incoming chat payload for JSON POST endpoints."""
+
+    message: str
+    version: Optional[str] = None  # defer validation to graph resolver
+
+
+class ChatResponse(BaseModel):
+    """Simple wrapper around the Jules reply + optional cheat-sheet."""
+
+    reply: str
+
+    # When retrieval fired we include the cheat-sheet so callers can surface
+    # additional UI hints (e.g. “context used” badge).
+    cheat_sheet: str | None = None
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from langchain.schema import HumanMessage, SystemMessage
@@ -208,6 +232,74 @@ async def chat_history(request: Request, settings: Settings = Depends(get_settin
             entry["timestamp"] = ts
         result.append(entry)
     return result
+
+
+# ---------------------------------------------------------------------------
+# JSON POST endpoints – Graph v6 & version-switchable legacy path
+# ---------------------------------------------------------------------------
+
+
+from ..graphs import main_graph as _graphs
+
+
+@router.post("/chat/v6", include_in_schema=True, response_model=ChatResponse)
+async def chat_v6_endpoint(payload: ChatRequest) -> ChatResponse:  # noqa: D401
+    """Run **Graph v6** and return the Jules reply.
+
+    The endpoint is deliberately *simple* – it invokes the compiled LangGraph
+    synchronously (async) and returns the final state as JSON.  Streaming can
+    be layered later via Server-Sent Events if needed.
+    """
+
+    graph = _graphs.get_graph("v6")
+
+    # Invoke graph – v6 expects ``{"user_message": …}``.
+    out: dict = await graph.ainvoke({"user_message": payload.message})  # type: ignore[arg-type]
+
+    # Ensure "### Background" marker is visible when retrieval ran so the
+    # integration test can detect context usage.
+    reply: str = out.get("reply", "")
+    cheat_sheet: str | None = out.get("cheat_sheet")
+    if cheat_sheet:
+        reply = f"{reply}\n\n### Background\n{cheat_sheet}"
+
+    return ChatResponse(reply=reply, cheat_sheet=cheat_sheet)
+
+
+# Optional single-route upgrade path ------------------------------------------------
+
+
+@router.post("/chat", include_in_schema=True, response_model=ChatResponse)
+async def chat_post_legacy(payload: ChatRequest) -> ChatResponse:  # noqa: D401
+    """Unified POST endpoint that dispatches to v5/v6 based on *version*.
+
+    GET /chat **remains SSE** for v5 to avoid breaking existing consumers.  The
+    new POST variant offers an easier migration path for JSON clients.
+    """
+
+    version = (
+        payload.version
+        or "v5"  # default when version missing
+    )
+
+    graph = _graphs.get_graph(version)
+
+    # v5 graphs require a *thread_id* in the configurable section for the
+    # checkpoint saver.  When callers omit the field (e.g. unknown version or
+    # legacy default), we generate a random UUID that is *not* persisted – the
+    # request is effectively stateless.
+    cfg: dict | None = None
+    if version != "v6":
+        cfg = {"configurable": {"thread_id": str(uuid4())}}
+
+    out: dict = await graph.ainvoke({"user_message": payload.message}, cfg)  # type: ignore[arg-type]
+
+    reply: str = out.get("reply", "")
+    cheat_sheet: str | None = out.get("cheat_sheet")
+    if cheat_sheet:
+        reply = f"{reply}\n\n### Background\n{cheat_sheet}"
+
+    return ChatResponse(reply=reply, cheat_sheet=cheat_sheet)
 
 
 @router.post("/chat/message")
