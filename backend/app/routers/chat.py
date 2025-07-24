@@ -239,7 +239,26 @@ async def chat_history(request: Request, settings: Settings = Depends(get_settin
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Internals
+# ---------------------------------------------------------------------------
+
+# Graph registry (v5 & v6)
 from ..graphs import main_graph as _graphs
+
+# ---------------------------------------------------------------------------
+# Feature-flag – allow operators to disable legacy Graph v5 ahead of removal.
+# Read on every request so ``monkeypatch.setenv`` in tests picks up the change
+# without requiring a module reload.
+# ---------------------------------------------------------------------------
+
+import os
+
+
+def _v5_enabled() -> bool:  # noqa: D401 – simple helper
+    """Return **True** when Graph v5 is allowed by the `JULES_ENABLE_V5` env."""
+
+    return os.getenv("JULES_ENABLE_V5", "true").lower() == "true"
 
 
 @router.post("/chat/v6", include_in_schema=True, response_model=ChatResponse)
@@ -277,10 +296,16 @@ async def chat_post_legacy(payload: ChatRequest) -> ChatResponse:  # noqa: D401
     new POST variant offers an easier migration path for JSON clients.
     """
 
-    version = (
-        payload.version
-        or "v5"  # default when version missing
-    )
+    version = payload.version or "v5"  # default when version missing
+
+    # ---------------------------------------------------------------------
+    # Deprecation gate – refuse *any* non-v6 request when the operator has
+    # explicitly disabled legacy support.
+    # ---------------------------------------------------------------------
+
+    if version != "v6" and not _v5_enabled():
+        # 410 Gone – resource intentionally removed.
+        raise HTTPException(status_code=410, detail="Graph v5 has been disabled")
 
     graph = _graphs.get_graph(version)
 
@@ -291,6 +316,9 @@ async def chat_post_legacy(payload: ChatRequest) -> ChatResponse:  # noqa: D401
     cfg: dict | None = None
     if version != "v6":
         cfg = {"configurable": {"thread_id": str(uuid4())}}
+        # Surface a deprecation warning in the logs so operators can track
+        # remaining v5 traffic.
+        logger.warning("DEPRECATED_V5", extra={"code_path": __name__, "requested_version": version})
 
     out: dict = await graph.ainvoke({"user_message": payload.message}, cfg)  # type: ignore[arg-type]
 
