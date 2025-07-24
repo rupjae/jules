@@ -10,6 +10,11 @@ import datetime
 from langgraph.graph import END, StateGraph
 from langchain_core.runnables import RunnableConfig
 from typing_extensions import TypedDict
+from typing import Any
+
+# NOTE: this module now supports multiple graph versions (v5, v6, …).  The
+# v5 implementation lives below unchanged, while newer versions are lazily
+# imported to avoid pulling heavyweight deps at import-time.
 
 from ..config import get_settings
 from ..checkpointer import get_checkpointer
@@ -51,8 +56,9 @@ def _llm_node(state: GraphState, config: RunnableConfig | None = None) -> GraphS
     return {"messages": [ai_msg]}
 
 
-def build_graph() -> StateGraph[GraphState]:
-    """Construct the conversation graph."""
+def _build_v5_graph() -> StateGraph[GraphState]:
+    """Construct the *legacy* v5 conversation graph."""
+
     checkpointer = get_checkpointer()
     sg: StateGraph[GraphState] = StateGraph(GraphState)
     sg.add_node("llm", _llm_node)
@@ -61,4 +67,51 @@ def build_graph() -> StateGraph[GraphState]:
     return sg.compile(checkpointer=checkpointer)
 
 
-graph = build_graph()
+# ---------------------------------------------------------------------------
+# Graph registry helpers
+# ---------------------------------------------------------------------------
+
+
+_REGISTRY: dict[str, Any] = {}
+
+
+def _ensure_v5() -> None:
+    if "v5" not in _REGISTRY:
+        _REGISTRY["v5"] = _build_v5_graph()
+
+
+def _ensure_v6() -> None:
+    """Import and cache the v6 graph lazily to avoid heavy deps on startup."""
+
+    if "v6" in _REGISTRY:
+        return
+
+    from jules.graph_v6 import graph as v6_graph  # local import – heavy
+
+    _REGISTRY["v6"] = v6_graph
+
+
+def get_graph(req_version: str | None = None):  # noqa: D401 – helper accessor
+    """Return the compiled graph matching *req_version*.
+
+    Fallback order:
+    1. Explicit match (case-insensitive).
+    2. Default to ``v5`` when the supplied version is ``None`` or unknown.
+    """
+
+    version = (req_version or "v5").lower()
+
+    # Always make sure v5 is present.
+    _ensure_v5()
+
+    if version == "v6":
+        _ensure_v6()
+
+    return _REGISTRY.get(version, _REGISTRY["v5"])
+
+
+# Keep legacy *build_graph()* alias for existing imports (returns v5).
+
+
+def build_graph():  # type: ignore[override]
+    return get_graph("v5")

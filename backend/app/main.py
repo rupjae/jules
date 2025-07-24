@@ -35,8 +35,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount built frontend (static export) at root
-# NOTE: static mount must come *after* API routers so it doesn't shadow them.
+# Mount built frontend (static export) at root *only when the directory exists*
+# This guards the test environment where the compiled assets are absent.
+
+import os
+
+
+if os.path.isdir("static"):
+    app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 # Register application routers
 app.include_router(chat_router.router)
@@ -64,4 +70,4 @@ async def _authorize(
 
 # Mount built frontend (static export) *after* all API routes so paths like
 # "/api/chat" are correctly resolved before the catch-all static files route.
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# Duplicate mount removed – the conditional mount above handles it.

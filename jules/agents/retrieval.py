@@ -143,6 +143,13 @@ class RetrievalAgent:
 
         # Branch 1 – no external search required
         if response.content and response.content.strip().upper() == "NO_SEARCH":
+            logger.info(
+                "SEARCH_DECISION",
+                extra={
+                    "code_path": __name__,
+                    "need_search": False,
+                },
+            )
             return {"need_search": False}
 
         # Branch 2 – function call
@@ -155,6 +162,16 @@ class RetrievalAgent:
         query: str = args.get("query", user_message)
         k: int = int(args.get("k", self.cfg.k))
         k = max(1, min(k, self.cfg.k))
+
+        logger.info(
+            "SEARCH_DECISION",
+            extra={
+                "code_path": __name__,
+                "need_search": True,
+                "query": query,
+                "k": k,
+            },
+        )
 
         return {"need_search": True, "query": query, "k": k, "thread_id": thread_id}
 
@@ -173,34 +190,46 @@ class RetrievalAgent:
             f"Stay under {self.cfg.summary_tokens} tokens.\n\n{docs_text}"
         )
 
-        # Offline path – naive deterministic join capped by length
-        if isinstance(self.llm, _OfflineLLM):
-            joined = "\n".join(f"- {hit.text}" for hit in results[: self.cfg.k])
-            # Crude token approximation (spaces) – truncate if necessary
-            tokens = joined.split()
-            if len(tokens) > self.cfg.summary_tokens:
-                joined = " ".join(tokens[: self.cfg.summary_tokens]) + " …"
-            return joined
-
-        msg = await self.llm.ainvoke(
-            [SystemMessage(content=prompt)], max_tokens=self.cfg.summary_tokens
-        )
-
-        raw = msg.content.strip()
-
-        # Enforce token cap post-hoc using tiktoken to guarantee ≤summary_tokens
+        summary: str = ""
         try:
-            import tiktoken  # type: ignore
+            # Offline path – naive deterministic join capped by length
+            if isinstance(self.llm, _OfflineLLM):
+                joined = "\n".join(f"- {hit.text}" for hit in results[: self.cfg.k])
+                # Crude token approximation (spaces) – truncate if necessary
+                tokens = joined.split()
+                if len(tokens) > self.cfg.summary_tokens:
+                    joined = " ".join(tokens[: self.cfg.summary_tokens]) + " …"
+                summary = joined
+            else:
+                msg = await self.llm.ainvoke(
+                    [SystemMessage(content=prompt)], max_tokens=self.cfg.summary_tokens
+                )
 
-            enc = tiktoken.encoding_for_model(self.cfg.model)
-            tokens = enc.encode(raw)
-            if len(tokens) > self.cfg.summary_tokens:
-                raw = enc.decode(tokens[: self.cfg.summary_tokens]) + " …"
-        except Exception:
-            # Soft-fail: keep raw text
-            pass
+                summary = msg.content.strip()
 
-        return raw
+                # Enforce token cap post-hoc using tiktoken to guarantee ≤summary_tokens
+                try:
+                    import tiktoken  # type: ignore
+
+                    enc = tiktoken.encoding_for_model(self.cfg.model)
+                    tokens = enc.encode(summary)
+                    if len(tokens) > self.cfg.summary_tokens:
+                        summary = enc.decode(tokens[: self.cfg.summary_tokens]) + " …"
+                except Exception:
+                    # Soft-fail: keep raw text
+                    pass
+
+            return summary
+        finally:
+            try:
+                cheat_tokens = len(summary.split()) if summary else 0
+                logger.info(
+                    "SEARCH_SUMMARY",
+                    extra={"code_path": __name__, "cheat_tokens": cheat_tokens},
+                )
+            except Exception:
+                # Guard: never raise from telemetry
+                pass
 
 
     # ------------------------------------------------------------------
