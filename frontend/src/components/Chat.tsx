@@ -7,11 +7,16 @@ import {
   Paper,
   TextField,
   Typography,
+  Collapse,
 } from '@mui/material';
+
+import InfoPacketToggle from './InfoPacketToggle';
+import { useChatStream } from '../lib/useChatStream';
 
 interface Message {
   sender: 'user' | 'assistant';
   content: string;
+  infoPacket?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,9 +95,41 @@ export function Chat() {
     );
     setTokenCount(approx);
   }, [messages]);
-  const eventSourceRef = useRef<EventSource | null>(null);
   // ref to scrollable messages container
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // input that triggers streaming; kept separate to satisfy React hook rules
+  const [streamInput, setStreamInput] = useState<string | null>(null);
+
+  // Hook – connects when *streamInput* is non-null
+  useChatStream(
+    streamInput ?? '',
+    (token) => {
+      if (streamInput === null) return;
+      setMessages((prev) => {
+        const assistantIndex = prev.findIndex((m) => m.sender === 'assistant' && !m.infoPacket);
+        if (assistantIndex === -1) return prev;
+        const copy = [...prev];
+        copy[assistantIndex] = {
+          ...copy[assistantIndex],
+          content: copy[assistantIndex].content + token,
+        };
+        return copy;
+      });
+    },
+    (pkt) => {
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.sender === 'assistant' && !m.infoPacket);
+        if (idx === -1) return prev;
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], infoPacket: pkt };
+        return copy;
+      });
+      setLoading(false);
+      setStreamInput(null);
+    },
+    backendUrl
+  );
 
   const sendMessage = () => {
     if (!input.trim()) return;
@@ -101,38 +138,14 @@ export function Chat() {
     setInput('');
     setLoading(true);
 
-    const url =
-      `${backendUrl}/api/chat?thread_id=${threadId}` +
-      `&message=${encodeURIComponent(input)}`;
-    const es = new EventSource(url, { withCredentials: false });
+    // push placeholder assistant message – will be updated by hook callbacks
+    setMessages((prev) => [...prev, { sender: 'assistant', content: '' }]);
 
-    eventSourceRef.current = es;
-
-    es.onopen = () => {
-      // EventSource established
-    };
-
-    let assistantBuffer = '';
-
-    es.onmessage = (ev) => {
-      assistantBuffer += ev.data;
-      setMessages([
-        ...newMessages,
-        { sender: 'assistant', content: assistantBuffer },
-      ]);
-    };
-
-    es.onerror = () => {
-      es.close();
-      setLoading(false);
-    };
+    // trigger hook connection
+    setStreamInput(input);
   };
 
-  useEffect(() => {
-    return () => {
-      eventSourceRef.current?.close();
-    };
-  }, []);
+  // no explicit cleanup necessary – handled inside useChatStream
   // scroll to bottom whenever messages change
   useEffect(() => {
     const el = containerRef.current;
@@ -152,18 +165,37 @@ export function Chat() {
       </Box>
       <Paper ref={containerRef} sx={{ p: 2, height: 500, overflowY: 'auto' }}>
         {messages.map((m, idx) => (
-          <Typography
-            key={idx}
-            sx={{
-              mb: 1,
-              textAlign: m.sender === 'user' ? 'right' : 'left',
-            }}
-          >
-            <strong>{m.sender === 'user' ? 'You' : 'Jules'}:</strong> {m.content}
-          </Typography>
+          <div key={idx}>
+            <Typography
+              sx={{
+                mb: 1,
+                textAlign: m.sender === 'user' ? 'right' : 'left',
+              }}
+            >
+              <strong>{m.sender === 'user' ? 'You' : 'Jules'}:</strong>{' '}
+              {m.content}
+            </Typography>
+            {typeof window !== 'undefined' &&
+              localStorage.getItem('showInfoPacket') === 'true' &&
+              m.infoPacket && (
+                <Collapse in>
+                  <Paper
+                    elevation={1}
+                    sx={{ p: 1, my: 1, bgcolor: 'grey.100' }}
+                  >
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                      {m.infoPacket}
+                    </pre>
+                  </Paper>
+                </Collapse>
+              )}
+          </div>
         ))}
         {loading && <CircularProgress size={20} />}
       </Paper>
+      <Box sx={{ mt: 1 }}>
+        <InfoPacketToggle />
+      </Box>
       <Box sx={{ display: 'flex', mt: 2 }}>
         <TextField
           fullWidth

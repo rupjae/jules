@@ -25,6 +25,7 @@ from sse_starlette.sse import EventSourceResponse
 from sse_starlette import sse as sse_mod
 
 from ..config import Settings, get_settings
+from .graph_runner import run_graph
 import datetime
 
 
@@ -296,3 +297,72 @@ async def chat_search(
             results.append(item)
 
     return results
+# ---------------------------------------------------------------------------
+# RAG stream endpoint (new /chat/stream path)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Streaming endpoint (GET-based for native browser EventSource support)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/chat/stream")
+async def chat_stream(request: Request, prompt: str = Query(..., description="User prompt")):
+    """Stream assistant tokens (and a final *info_packet*) via SSE.
+
+    The endpoint is **GET**-only so that browsers can establish an EventSource
+    without CORS or polyfill workarounds.  The *prompt* is provided as a query
+    string parameter – body payloads are explicitly rejected by FastAPI's
+    signature (no pydantic model argument).
+    """
+
+    # Build LangGraph instance – created at startup and cached on app state
+    graph = request.app.state.graph
+    state = {"prompt": prompt, "info_packet": None}
+
+    async def event_generator():
+        last_info: str | None = None
+
+        async for output in run_graph(graph, state):
+            if "partial" in output:
+                yield f"data: {output['partial']}\n\n"
+            if "info_packet" in output:
+                last_info = output["info_packet"]
+
+        # Graph finished – emit single *info_packet* event by streaming the
+        # *event* and *data* lines as one logical block (no blank line until
+        # after the data) so they belong to the same SSE event.
+
+        # According to the SSE spec each event is separated by a *blank line*.
+        # Therefore we must not send the terminating "\n\n" after the
+        # ``event:`` directive alone – doing so would create an event without
+        # a *data:* field (observed as "data: null" in the UI).  Instead we
+        # write both lines back-to-back and finish with the mandatory blank
+        # line.
+
+        # Emit *info_packet* only when the graph produced one – callers may
+        # disable that feature and rely on the default *None* value.  In that
+        # case we avoid sending a meaningless event that would clutter the
+        # client-side event stream.
+
+
+        if last_info is not None:
+            yield f"event: info_packet\ndata: {last_info}\n\n"
+
+        # Keep the SSE connection alive with periodic comments so the browser
+        # does **not** aggressively reconnect (which manifests as an endless
+        # request loop on the server).  The client will close the connection
+        # on its side once it processed the final info_packet.
+
+        try:
+            while True:
+                await asyncio.sleep(15)
+                # SSE comment line – ignored by the client but prevents idle
+                # TCP timeouts and keeps the *readyState* at OPEN.
+                yield ":\n\n"
+        except asyncio.CancelledError:
+            # Client disconnected – exit quietly.
+            return
+
+    return EventSourceResponse(event_generator())

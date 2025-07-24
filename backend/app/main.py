@@ -11,13 +11,13 @@ from .config import Settings, get_settings
 # only the *app* folder, not the whole backend tree).
 
 from .checkpointer import get_checkpointer
-from .graphs.main_graph import build_graph
+from .graphs.next_gen import build_graph
 
 # Routers
 from .routers import chat as chat_router
 
 
-app = FastAPI(title="Jules API", version="0.1.0")
+app = FastAPI(title="Jules API", version="1.0.0")
 
 
 @app.on_event("startup")

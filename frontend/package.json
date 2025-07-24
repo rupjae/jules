@@ -40,6 +40,8 @@
     "jest": "^30.0.4",
     "jest-environment-jsdom": "^30.0.4",
     "ts-jest": "^29.4.0",
-    "typescript": "5.4.2"
+    "typescript": "5.4.2",
+    "vitest": "^1.5.0",
+    "@testing-library/react": "^14.0.0"
   }
 }
