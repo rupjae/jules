@@ -190,24 +190,35 @@ class RetrievalAgent:
             f"Stay under {self.cfg.summary_tokens} tokens.\n\n{docs_text}"
         )
 
+        # Initialise here so it is *always* defined for the ``finally`` block
         summary: str = ""
         try:
-            # Offline path – naive deterministic join capped by length
+            # -----------------------------------------------------------------
+            # Offline path – deterministic join capped by cfg.summary_tokens.
+            # -----------------------------------------------------------------
             if isinstance(self.llm, _OfflineLLM):
                 joined = "\n".join(f"- {hit.text}" for hit in results[: self.cfg.k])
-                # Crude token approximation (spaces) – truncate if necessary
+
                 tokens = joined.split()
                 if len(tokens) > self.cfg.summary_tokens:
                     joined = " ".join(tokens[: self.cfg.summary_tokens]) + " …"
+
                 summary = joined
+
+            # -----------------------------------------------------------------
+            # Online path – delegate summarisation to the LLM and *then* enforce
+            # the token budget post-hoc.
+            # -----------------------------------------------------------------
             else:
                 msg = await self.llm.ainvoke(
-                    [SystemMessage(content=prompt)], max_tokens=self.cfg.summary_tokens
+                    [SystemMessage(content=prompt)],
+                    max_tokens=self.cfg.summary_tokens,
                 )
 
                 summary = msg.content.strip()
 
-                # Enforce token cap post-hoc using tiktoken to guarantee ≤summary_tokens
+                # Hard truncate using tiktoken if available to guarantee the
+                # ≤summary_tokens contract.
                 try:
                     import tiktoken  # type: ignore
 
@@ -216,11 +227,12 @@ class RetrievalAgent:
                     if len(tokens) > self.cfg.summary_tokens:
                         summary = enc.decode(tokens[: self.cfg.summary_tokens]) + " …"
                 except Exception:
-                    # Soft-fail: keep raw text
+                    # Soft-fail: keep raw text on any tiktoken issue.
                     pass
 
             return summary
         finally:
+            # Telemetry must *never* raise – swallow any error defensively.
             try:
                 cheat_tokens = len(summary.split()) if summary else 0
                 logger.info(
@@ -228,7 +240,6 @@ class RetrievalAgent:
                     extra={"code_path": __name__, "cheat_tokens": cheat_tokens},
                 )
             except Exception:
-                # Guard: never raise from telemetry
                 pass
 
 

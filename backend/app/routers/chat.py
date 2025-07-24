@@ -19,14 +19,18 @@ from db import sqlite
 from ..schemas import ChatMessageIn
 # v6 JSON POST models
 from pydantic import BaseModel
-from typing import Literal, Optional
+# NOTE: Validation intentionally allows *any* string for ``version`` so that
+# backend routing can gracefully fall back to the default graph instead of
+# FastAPI aborting with a 422.  Supported values are resolved by
+# ``backend.app.graphs.main_graph.get_graph``.
+# Optional already imported above; avoid duplicate import
 
 
 class ChatRequest(BaseModel):
     """Incoming chat payload for JSON POST endpoints."""
 
     message: str
-    version: Optional[Literal["v5", "v6"]] = None
+    version: Optional[str] = None  # defer validation to graph resolver
 
 
 class ChatResponse(BaseModel):
