@@ -37,6 +37,17 @@ def trace(func: Callable[P, R]) -> Callable[P, R]:
 class JsonLinesHandler(logging.Handler):
     """Write log records as JSON lines."""
 
+    STANDARD_KEYS = {
+        "ts_epoch",
+        "level",
+        "logger",
+        "msg",
+        "code_path",
+        "trace_id",
+        "exc_type",
+        "exc_msg",
+    }
+
     def __init__(self, path: Path) -> None:
         super().__init__()
         self._fh = path.open("a", encoding="utf-8")
@@ -59,6 +70,28 @@ class JsonLinesHandler(logging.Handler):
         trace_id = getattr(record, "trace_id", None)
         if trace_id:
             payload["trace_id"] = trace_id
+        for key, value in record.__dict__.items():
+            if key not in payload and key not in {
+                "args",
+                "msg",
+                "exc_info",
+                "levelno",
+                "levelname",
+                "name",
+                "pathname",
+                "filename",
+                "module",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+            }:
+                payload[key] = value
 
         json.dump(payload, self._fh)
         self._fh.write("\n")
@@ -81,6 +114,11 @@ def configure_logging(debug: bool = False) -> Path:
 
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
+
+    root = logging.getLogger()
+    if getattr(root, "_configured", False):
+        return Path(root._configured)
+
     _purge_old_logs(log_dir)
 
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -88,9 +126,6 @@ def configure_logging(debug: bool = False) -> Path:
     jsonl_path = log_path.with_suffix(".jsonl")
 
     level = TRACE if debug else logging.INFO
-    root = logging.getLogger()
-    if getattr(root, "_configured", False):
-        return Path(root._configured)
     root.setLevel(level)
 
     fmt = "%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d - %(message)s"

@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import os
-import typer
+import typer  # type: ignore[import]
 
 app = typer.Typer(add_completion=False)
 

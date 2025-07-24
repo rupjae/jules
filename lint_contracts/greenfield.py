@@ -7,8 +7,10 @@ Import-Linter to discover them via the ``[tool.importlinter]`` configuration
 in ``pyproject.toml``.
 """
 
-from importlinter import Contract as ImportContract
-from importlinter.domain.contract import ForbiddenContract
+from __future__ import annotations
+
+from importlinter import Contract as ImportContract  # type: ignore[import]
+from importlinter.domain.contract import ForbiddenContract  # type: ignore[import]
 
 
 Contract = ImportContract(
@@ -19,4 +21,3 @@ Contract = ImportContract(
         forbidden_modules=["jules.legacy", "oldlib"],
     ),
 )
-

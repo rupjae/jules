@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from fastapi import FastAPI
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -46,7 +49,8 @@ app.include_router(chat_router.router)
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
+    """Simple health endpoint for monitoring."""
     return {"status": "ok"}
 
 

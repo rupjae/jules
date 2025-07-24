@@ -2,7 +2,7 @@
 
 Jules supports a global debug mode that lifts all services to TRACE level.
 Enable it via the `JULES_DEBUG` environment variable or by using the
-`docker-compose.debug.yml` overlay.
+`docker-compose.debug.yml` overlay or the `debug` profile.
 
 When debug mode is active the API server runs with `uvicorn --reload` and every
 JSON line log entry includes a `code_path` field for easy grepping.
@@ -17,6 +17,12 @@ JULES_DEBUG=1 docker compose up
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+```
+
+## Using the profile
+
+```bash
+docker compose --profile debug up
 ```
 
 ## Log locations

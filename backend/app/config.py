@@ -4,13 +4,14 @@ Values are sourced from environment variables (.env file loaded automatically
 by python-dotenv when the application starts).
 """
 
+from __future__ import annotations
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings  # type: ignore
-import os
 from pydantic import Field, conint, confloat  # type: ignore
 
 # Load variables from a .env file if present
@@ -43,9 +44,7 @@ class Settings(BaseSettings):
     # λ ∈ [0,1] – 0→novelty-only, 1→relevance-only.
     SEARCH_MMR_LAMBDA: confloat(ge=0.0, le=1.0) = Field(0.5, env="SEARCH_MMR_LAMBDA")
 
-    debug: bool = Field(
-        default_factory=lambda: os.getenv("JULES_DEBUG", "0") in {"1", "true", "yes"}
-    )
+    debug: bool = Field(False, validation_alias="JULES_DEBUG")
 
     class Config:
         case_sensitive = False
