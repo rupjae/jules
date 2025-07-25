@@ -20,9 +20,9 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 try:
-    import tomllib  # type: ignore[import-not-found]
+    import tomllib
 except ImportError:  # pragma: no cover – Python < 3.11
-    import tomli as tomllib  # type: ignore[import-not-found]
+    import tomli as tomllib  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
 # Locate the shared *config/agents.toml* file.
@@ -67,7 +67,7 @@ def _discover_agents_file() -> Path:
 AGENTS_FILE = _discover_agents_file()
 
 
-class AgentCfg(BaseModel):
+class AgentCfg(BaseModel):  # type: ignore[misc]
     """Configuration for a single agent."""
 
     model: str
@@ -75,7 +75,7 @@ class AgentCfg(BaseModel):
     cheat_tokens: int | None = None
 
 
-class AgentsConfig(BaseModel):
+class AgentsConfig(BaseModel):  # type: ignore[misc]
     """Full agents configuration tree."""
 
     retrieval: AgentCfg
@@ -107,7 +107,7 @@ model = "gpt-4o"
 """
 
     data: Any = tomllib.loads(text)
-    return AgentsConfig(**data)  # type: ignore[arg-type]
+    return AgentsConfig(**data)
 
 
 __all__ = [

@@ -50,7 +50,7 @@ app.add_middleware(
 app.include_router(chat_router.router)
 
 
-@app.get("/health")
+@app.get("/health")  # type: ignore[misc]
 async def health() -> dict[str, str]:
     """Simple health endpoint for monitoring."""
     return {"status": "ok"}

@@ -7,7 +7,7 @@ import typer
 app = typer.Typer(add_completion=False)
 
 
-@app.command()
+@app.command()  # type: ignore[misc]
 def run_worker(
     debug: bool = typer.Option(False, "--debug/--no-debug", help="Enable TRACE logging")
 ) -> None:

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 import os
 
-import httpx  # type: ignore[import-not-found]
+import httpx
 
 from jules.logging import trace
 

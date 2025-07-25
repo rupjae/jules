@@ -140,7 +140,7 @@ def configure_logging(debug: bool = False) -> Path:
             h.setFormatter(logging.Formatter(fmt))
         root.addHandler(h)
 
-    root._configured = str(log_path)
+    root._configured = str(log_path)  # type: ignore[attr-defined]
     return log_path
 
 

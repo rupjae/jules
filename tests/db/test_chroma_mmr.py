@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 from typing import Generator
 
-import anyio
 import chromadb
 import pytest
 
@@ -81,11 +80,15 @@ async def test_mmr_uniqueness(chroma_ephemeral: None) -> None:  # noqa: D401
 
 
 @pytest.mark.anyio("asyncio")
-async def test_dense_fallback(monkeypatch: pytest.MonkeyPatch, chroma_ephemeral: None) -> None:
+async def test_dense_fallback(
+    monkeypatch: pytest.MonkeyPatch, chroma_ephemeral: None
+) -> None:
     """When MMR path errors, search() falls back to dense query and still returns k hits."""
 
     # Force the internal MMR helper to blow up.
-    monkeypatch.setattr(chroma, "_mmr_collection_wrapper", lambda: (_ for _ in ()).throw(RuntimeError))
+    monkeypatch.setattr(
+        chroma, "_mmr_collection_wrapper", lambda: (_ for _ in ()).throw(RuntimeError)
+    )
 
     settings = get_settings()
     texts = [f"doc {i}" for i in range(20)]
