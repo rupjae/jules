@@ -323,14 +323,40 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
 
     async def event_generator():
         last_info: str | None = None
+        # When running with real streaming the UI progressively renders
+        # *partial* tokens.  In non-streaming scenarios (e.g. stub mode) the graph
+        # may only emit one final *content* message – capture it so we can
+        # still return a meaningful payload to the EventSource consumer.
+        last_content: str | None = None
 
         async for output in run_graph(graph, state):
+            # 1. Progressive tokens
             if "partial" in output:
-                yield f"data: {output['partial']}\n\n"
+                # Starlette will automatically prepend "data: " and append a
+                # final blank line when the yielded value is *str*.
+                yield f"{output['partial']}\n"
+
+            # 2. Final assistant message emitted when streaming is unavailable.
+            #    emit immediately – we defer until the graph finishes so that
+            #    the *content* appears *after* any partial tokens (when they
+            #    exist) and right before the optional *info_packet* event.
+            if "content" in output:
+                last_content = output["content"]
+
+            # 3. Keep track of the most recent info_packet so we can forward
+            #    it once the graph is done.
             if "info_packet" in output:
                 last_info = output["info_packet"]
 
-        # Graph finished – emit single *info_packet* event by streaming the
+        # ------------------------------------------------------------------
+        # Graph finished – emit any *content* captured from a non-streaming
+        # run **first**, followed by the optional *info_packet*.
+        # ------------------------------------------------------------------
+
+        if last_content is not None:
+            yield f"{last_content}\n"
+
+        # Emit single *info_packet* event by streaming the
         # *event* and *data* lines as one logical block (no blank line until
         # after the data) so they belong to the same SSE event.
 

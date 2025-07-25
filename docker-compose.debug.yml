@@ -8,31 +8,45 @@ x-debug-logging: &debug-logging
 
 services:
   jules:
-    profiles: ["debug"]
     environment:
       JULES_DEBUG: "1"
+    # Override the base `command:` so we only run the debug entrypoint.
+    command: []
     entrypoint:
       - python
       - -m
       - backend.cli
-      - run-server
       - --debug
     logging: *debug-logging
 
+    volumes:
+      - ./backend:/app/backend
+      - ./worker:/app/worker
+
   worker:
-    profiles: ["debug"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # No additional CMD arguments – rely solely on the custom entrypoint.
+    command: []
+    volumes:
+      - ./backend:/app/backend
+      - ./backend/app:/app/app
+      - ./worker:/app/worker
+      - ./db:/app/db
+      - ./jules:/app/jules
+      - ./data:/app/data
+      - ./worker:/app/worker
     environment:
       JULES_DEBUG: "1"
     entrypoint:
       - python
       - -m
       - worker.cli
-      - run-worker
       - --debug
     logging: *debug-logging
 
   chroma:
-    profiles: ["debug"]
     environment:
       RUST_LOG: debug
     logging: *debug-logging
