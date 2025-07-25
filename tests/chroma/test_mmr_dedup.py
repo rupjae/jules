@@ -14,9 +14,11 @@ from __future__ import annotations
 
 from collections import Counter
 
-import pytest
 
 from db import chroma
+from tests.chroma.test_chroma_save_search import (
+    chroma_fake_embed as chroma_fake_embed_fixture,  # noqa: F401
+)
 
 
 # ---------------------------------------------------------------------------
@@ -26,8 +28,6 @@ from db import chroma
 
 # Import the deterministic in-memory Chroma fixture from the neighbouring
 # module so we don’t duplicate code.
-
-from tests.chroma.test_chroma_save_search import chroma_fake_embed  # type: ignore F401
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ def _add(text: str, count: int = 1, thread_id: str = "t-mmr") -> None:
         )
 
 
-def test_mmr_returns_unique_results(chroma_fake_embed: None) -> None:  # type: ignore[arg-type]
+def test_mmr_returns_unique_results(chroma_fake_embed_fixture: None) -> None:  # type: ignore[arg-type]  # noqa: F811
     """The fallback MMR implementation must not yield duplicate texts.
 
     We create several **identical** messages ("hello world") alongside a few
@@ -64,6 +64,7 @@ def test_mmr_returns_unique_results(chroma_fake_embed: None) -> None:  # type: i
 
     k = 3
     import anyio
+
     results = anyio.run(chroma.search, None, "hello", k)
 
     assert len(results) == k, "search() must back-fill to *k* unique items"

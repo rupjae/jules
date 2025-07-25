@@ -33,6 +33,7 @@ pytest = "8.2.2"
 import-linter = "1.11.1"
 pytest-docker = "3.1.1"
 respx = "0.21.1"
+mypy = "1.10.0"
 
 [tool.importlinter]
 contracts = ["lint_contracts.greenfield:Contract"]
@@ -51,3 +52,10 @@ exclude = [
     "docs/*",
     "notebook/*",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+exclude = "(?x)(^tests/|^db/|^backend/app/(routers|graphs|agents)/|^backend/app/checkpointer.py|^lint_contracts/)"
+follow_imports = "skip"
+plugins = ["pydantic.mypy"]

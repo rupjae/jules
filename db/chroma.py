@@ -36,15 +36,15 @@ except ImportError:  # pragma: no cover – langchain optional in minimal instal
 
 # Local runtime configuration -------------------------------------------------
 
-from app.config import get_settings
+from backend.app.config import get_settings
+from functools import lru_cache
+from jules.logging import trace
 
 # Cache the settings instance once at import time – these values are immutable
 # for the lifetime of the process and reading from the cached copy avoids the
 # relatively expensive environment parsing on every search call.
 
 settings = get_settings()
-
-from jules.logging import trace
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +56,6 @@ _embedding: EmbeddingFunction[Any] | None = None
 # ---------------------------------------------------------------------------
 # Max-Marginal Relevance helper
 # ---------------------------------------------------------------------------
-
-
-from functools import lru_cache
 
 
 @lru_cache(maxsize=1)
@@ -284,7 +281,6 @@ async def search(
     without adding a heavyweight dependency on LangChain in the hot path.
     """
 
-
     top_k = k or settings.SEARCH_TOP_K
     oversample = settings.SEARCH_MMR_OVERSAMPLE
 
@@ -303,7 +299,11 @@ async def search(
             fetch_k = top_k * oversample
             # Chroma’s LC wrapper exposes .max_marginal_relevance_search()
             return store.max_marginal_relevance_search(
-                query, k=top_k, fetch_k=fetch_k, filter=where, lambda_mult=settings.SEARCH_MMR_LAMBDA
+                query,
+                k=top_k,
+                fetch_k=fetch_k,
+                filter=where,
+                lambda_mult=settings.SEARCH_MMR_LAMBDA,
             )
 
         try:

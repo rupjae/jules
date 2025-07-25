@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 from fastapi import FastAPI
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from fastapi import Depends, HTTPException, Request, status
 
 from .config import Settings, get_settings
+from jules.logging import configure_logging
 
 # `memory.py` lives at project root.  Use absolute import so it works regardless
 # of where the `app` package is located on the import path (Docker image copies
@@ -17,13 +21,17 @@ from .graphs.next_gen import build_graph
 from .routers import chat as chat_router
 
 
+settings = get_settings()
+configure_logging(settings.debug)
 app = FastAPI(title="Jules API", version="1.0.0")
 
 
-@app.on_event("startup")
 async def _init_graph() -> None:
     app.state.checkpointer = get_checkpointer()
     app.state.graph = build_graph()
+
+
+app.add_event_handler("startup", _init_graph)
 
 
 # Allow frontend origin during development
@@ -42,8 +50,9 @@ app.add_middleware(
 app.include_router(chat_router.router)
 
 
-@app.get("/health")
-async def health():
+@app.get("/health")  # type: ignore[misc]
+async def health() -> dict[str, str]:
+    """Simple health endpoint for monitoring."""
     return {"status": "ok"}
 
 

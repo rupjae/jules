@@ -33,4 +33,15 @@ jobs:
       - name: Start services
         run: docker compose up -d chroma
       - name: Run tests
+        env:
+          JULES_DEBUG: "0"
         run: poetry run pytest -m "not slow"
+      - name: Type check
+        run: poetry run mypy --strict .
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs/*.jsonl
+          if-no-files-found: ignore

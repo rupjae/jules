@@ -1,0 +1,38 @@
+version: "3.9"
+
+x-debug-logging: &debug-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  jules:
+    profiles: ["debug"]
+    environment:
+      JULES_DEBUG: "1"
+    entrypoint:
+      - python
+      - -m
+      - backend.cli
+      - run-server
+      - --debug
+    logging: *debug-logging
+
+  worker:
+    profiles: ["debug"]
+    environment:
+      JULES_DEBUG: "1"
+    entrypoint:
+      - python
+      - -m
+      - worker.cli
+      - run-worker
+      - --debug
+    logging: *debug-logging
+
+  chroma:
+    profiles: ["debug"]
+    environment:
+      RUST_LOG: debug
+    logging: *debug-logging

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import aiosqlite
+import aiosqlite  # type: ignore[import-not-found]
 from pydantic import BaseModel
 
 from jules.logging import trace

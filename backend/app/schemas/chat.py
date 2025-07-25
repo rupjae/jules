@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, UUID4
 
 
-class ChatMessageIn(BaseModel):
+class ChatMessageIn(BaseModel):  # type: ignore[misc]
     """Incoming Pydantic chat message payload."""
 
     thread_id: UUID4
