@@ -45,6 +45,15 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Index of the assistant “placeholder” message that is currently being
+  // filled by the streaming response. The value is set right after the
+  // placeholder is pushed to the `messages` array and cleared once the
+  // backend notifies that the message has finished (via the `info_packet`
+  // custom SSE event).
+  const [activeAssistantIdx, setActiveAssistantIdx] = useState<number | null>(
+    null
+  );
   // threadId: generated once (server or client) and persisted in localStorage on the client
   const [threadId, setThreadId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -63,6 +72,7 @@ export function Chat() {
     const newId = uuidv4();
     setThreadId(newId);
     setMessages([]);
+    setActiveAssistantIdx(null);
     if (typeof window !== 'undefined') {
       localStorage.setItem('julesThreadId', newId);
     }
@@ -105,26 +115,39 @@ export function Chat() {
   useChatStream(
     streamInput ?? '',
     (token) => {
-      if (streamInput === null) return;
+      // Ignore tokens when no assistant message is active (should not happen)
+      if (activeAssistantIdx === null) return;
+
       setMessages((prev) => {
-        const assistantIndex = prev.findIndex((m) => m.sender === 'assistant' && !m.infoPacket);
-        if (assistantIndex === -1) return prev;
+        // Guard against race conditions where the messages array might have
+        // grown (e.g. a "new conversation" was triggered) after the stream
+        // started.
+        if (activeAssistantIdx! >= prev.length) return prev;
+
         const copy = [...prev];
-        copy[assistantIndex] = {
-          ...copy[assistantIndex],
-          content: copy[assistantIndex].content + token,
+        copy[activeAssistantIdx!] = {
+          ...copy[activeAssistantIdx!],
+          content: copy[activeAssistantIdx!].content + token,
         };
         return copy;
       });
     },
     (pkt) => {
+      // Attach the info packet to the message that has just finished
       setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.sender === 'assistant' && !m.infoPacket);
-        if (idx === -1) return prev;
+        if (activeAssistantIdx === null || activeAssistantIdx >= prev.length)
+          return prev;
+
         const copy = [...prev];
-        copy[idx] = { ...copy[idx], infoPacket: pkt };
+        copy[activeAssistantIdx] = {
+          ...copy[activeAssistantIdx],
+          infoPacket: pkt,
+        };
         return copy;
       });
+
+      // Streaming for this message has completed
+      setActiveAssistantIdx(null);
       setLoading(false);
       setStreamInput(null);
     },
@@ -133,15 +156,25 @@ export function Chat() {
 
   const sendMessage = () => {
     if (!input.trim()) return;
-    const newMessages: Message[] = [...messages, { sender: 'user', content: input }];
-    setMessages(newMessages);
+    if (!input.trim()) return;
+
+    setMessages((prev) => {
+      const withNew: Message[] = [
+        ...prev,
+        { sender: 'user', content: input },
+        { sender: 'assistant', content: '' },
+      ];
+      // Index of the placeholder we just pushed is the last element
+      setActiveAssistantIdx(withNew.length - 1);
+      return withNew;
+    });
+
     setInput('');
     setLoading(true);
 
-    // push placeholder assistant message – will be updated by hook callbacks
-    setMessages((prev) => [...prev, { sender: 'assistant', content: '' }]);
-
-    // trigger hook connection
+    // Fire the stream after state has been queued – we purposefully don’t wait
+    // for React to finish the render cycle because the SSE handshake runs
+    // independently.
     setStreamInput(input);
   };
 

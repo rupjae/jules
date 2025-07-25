@@ -186,25 +186,58 @@ def build_graph():
     # ------------------------------------------------------------------
 
     async def _stream(state, *args, **kwargs):  # type: ignore[override]
-        last_info: str | None = None
-        emitted_content = False
-        async for step in compiled.astream(state, *args, **kwargs):
-            flat: dict = {}
-            for val in step.values():
-                if isinstance(val, dict):
-                    flat.update(val)
-            if "info_packet" in flat:
-                last_info = flat["info_packet"]
-            if "content" in flat:
-                emitted_content = True
-            yield flat
+        """Custom streaming wrapper used by the HTTP layer.
 
-        # If the stream already emitted a *content* message (real OpenAI run),
-        # we do not add another synthetic one.  Otherwise we fall back to the
-        # deterministic stub so unit tests keep passing.
-        if not emitted_content:
-            # Emit stub content to satisfy unit tests when running in stub mode.
-            yield {"content": "OK", "info_packet": last_info}
+        The original implementation relied on ``compiled.astream`` to surface
+        the intermediate outputs of each node.  Unfortunately LangGraph only
+        **returns** the *final* value of a generator-style node – any
+        ``yield``ed dictionaries that represent *delta tokens* never make it
+        to the enclosing graph iterator.  As a consequence the frontend saw a
+        single "OK" payload instead of the progressive token stream emitted
+        by the *jules_llm* node.
+
+        We now execute the retrieval-decision helper(s) *up-front* – outside
+        the graph – and then delegate to the *jules_llm* async-generator
+        **directly**.  This guarantees that every ``yield`` from the LLM
+        reaches the API consumer while keeping the public contract identical
+        for unit-tests (final element includes both ``content`` and an
+        optional ``info_packet``).
+        """
+
+        # ------------------------------------------------------------------
+        # 1. Decide whether we need the retrieval step and, if so, fetch the
+        #    summarised context so we can attach it to the LLM call.
+        # ------------------------------------------------------------------
+
+        # Ensure the *prompt* key exists – tests and callers rely on it.
+        prompt: str = state["prompt"]
+
+        dec = await retrieval_decide({"prompt": prompt})
+        info_packet: str | None = None
+
+        if dec.get("search"):
+            # When retrieval is required run that node – it returns a superset
+            # of the incoming state with the *info_packet* attached.
+            summarised = await retrieval_summarise(dec)
+            info_packet = summarised.get("info_packet")  # type: ignore[assignment]
+
+        # ------------------------------------------------------------------
+        # 2. Stream tokens from the LLM node *directly* so partials propagate
+        #    to the client.  We simply forward everything we receive.
+        # ------------------------------------------------------------------
+
+        yielded_any = False
+        last_chunk: dict | None = None
+        async for c in jules_llm({"prompt": prompt, "info_packet": info_packet}):
+            yielded_any = True
+            last_chunk = c
+            yield c
+
+        # ``jules_llm`` should always end with a *content* dict but in case it
+        # doesn't we emit a minimal placeholder so downstream consumers stay
+        # functional.
+        if not yielded_any or (last_chunk is not None and "content" not in last_chunk):
+            yield {"content": "OK", "info_packet": info_packet}
 
     setattr(compiled, "stream", _stream)  # type: ignore[attr-defined]
 

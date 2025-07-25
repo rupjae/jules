@@ -329,17 +329,23 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
         # still return a meaningful payload to the EventSource consumer.
         last_content: str | None = None
 
+        # Flag to track whether we already streamed *partial* tokens.  When we
+        # did, sending the *full* message again at the end would duplicate the
+        # content on the client (the UI concatenates every incoming chunk).
+        streamed_partials = False
+
         async for output in run_graph(graph, state):
             # 1. Progressive tokens
             if "partial" in output:
+                streamed_partials = True
                 # Starlette will automatically prepend "data: " and append a
                 # final blank line when the yielded value is *str*.
-                yield f"{output['partial']}\n"
+                yield output["partial"]
 
             # 2. Final assistant message emitted when streaming is unavailable.
-            #    emit immediately – we defer until the graph finishes so that
-            #    the *content* appears *after* any partial tokens (when they
-            #    exist) and right before the optional *info_packet* event.
+            #    Capture it so we can forward **once** the graph finishes – but
+            #    only when we have *not* streamed any partial tokens (to avoid
+            #    duplication on the client side).
             if "content" in output:
                 last_content = output["content"]
 
@@ -353,8 +359,13 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
         # run **first**, followed by the optional *info_packet*.
         # ------------------------------------------------------------------
 
-        if last_content is not None:
-            yield f"{last_content}\n"
+        # Only forward the *full* assistant message when we have **not**
+        # already streamed incremental tokens.  When *streamed_partials* is
+        # True the UI has the complete text assembled locally and would show
+        # a duplicated copy if we sent the message again.
+
+        if last_content is not None and not streamed_partials:
+            yield last_content
 
         # Emit single *info_packet* event by streaming the
         # *event* and *data* lines as one logical block (no blank line until
@@ -373,8 +384,20 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
         # client-side event stream.
 
 
-        if last_info is not None:
-            yield f"event: info_packet\ndata: {last_info}\n\n"
+        # Always emit a *single* info_packet event so the frontend can reliably
+        # detect when the assistant has finished streaming and clear its
+        # loading indicator.  When the graph did not produce extra metadata we
+        # explicitly send the JSON literal `null` (as a string) which the
+        # browser forwards as the text "null".  The React hook converts that
+        # value back to the JavaScript `null` primitive.
+
+        payload = None if last_info is None else last_info
+        # ServerSentEvent will JSON-serialise non-str data, therefore convert
+        # `None` to the *string* "null" so the frontend can easily interpret
+        # it (the hook already maps the literal back to JavaScript null).
+        data_field = "null" if payload is None else payload
+
+        yield {"event": "info_packet", "data": data_field}
 
         # Keep the SSE connection alive with periodic comments so the browser
         # does **not** aggressively reconnect (which manifests as an endless
