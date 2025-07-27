@@ -9,12 +9,13 @@ from uuid import uuid4
 
 import anyio
 
-from chromadb import HttpClient
+from chromadb import HttpClient, EphemeralClient
 from chromadb.config import Settings
 import httpx
 from chromadb.api import ClientAPI
 from chromadb.api.models.Collection import Collection
 from chromadb.api.types import EmbeddingFunction, QueryResult
+from chromadb.errors import InvalidDimensionException
 from typing import Any, Set
 from chromadb.utils import embedding_functions
 from pydantic import BaseModel, Field
@@ -40,6 +41,41 @@ from backend.app.config import get_settings
 from functools import lru_cache
 from jules.logging import trace
 
+# ---------------------------------------------------------------------------
+# Ensure the on-disk Chroma data directory exists *before* the server starts.
+#
+# The Chroma Docker image stores its SQLite database under `/chroma/chroma`.
+# In development we bind-mount the host directory `./data/chromadb` into that
+# path (see *docker-compose.yml*).  If the directory is missing at container
+# start-up SQLite fails with
+#     sqlite3.OperationalError: unable to open database file
+# which bubbles up as an HTTP 500 and breaks all vector-store operations.
+#
+# Creating the directory from the **application container** guarantees that
+# the host mount point is present regardless of the order in which Docker
+# starts the two services.
+# ---------------------------------------------------------------------------
+
+# Path helpers *above* the logger instantiation – the function call is moved
+# further down to ensure `logger` is available.
+
+from pathlib import Path
+
+
+def _ensure_chroma_persist_dir() -> None:
+    """Create the shared Chroma persistence directory if it does not exist."""
+
+    # Keep the path in sync with docker-compose.yml
+    host_dir = Path(os.getenv("CHROMA_PERSIST_DIR", "./data/chromadb"))
+    try:
+        host_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # A failure here is non-fatal – the worst case is that the directory
+        # still does not exist and Chroma will emit the same error as before.
+        logger.warning("Could not ensure Chroma persist directory", exc_info=True)
+
+
+
 # Cache the settings instance once at import time – these values are immutable
 # for the lifetime of the process and reading from the cached copy avoids the
 # relatively expensive environment parsing on every search call.
@@ -47,6 +83,9 @@ from jules.logging import trace
 settings = get_settings()
 
 logger = logging.getLogger(__name__)
+
+# Ensure the directory exists now that *logger* is available.
+_ensure_chroma_persist_dir()
 
 _client: ClientAPI | None = None
 _collection: Collection | None = None
@@ -93,6 +132,7 @@ def _get_client() -> ClientAPI:
     if _client is None:
         host = os.environ.get("CHROMA_HOST", "chroma")
         port = int(os.environ.get("CHROMA_PORT", "8000"))
+
         # The initial embedding call can easily take >1 s when the model (or
         # an external dependency such as a SentenceTransformer ONNX weight)
         # needs to be downloaded.  A very low default led to frequent
@@ -105,14 +145,40 @@ def _get_client() -> ClientAPI:
         except ValueError:
             logger.warning("Invalid CHROMA_TIMEOUT_MS; using default 5000 ms")
             timeout_ms = 5000
-        _client = HttpClient(
-            host=host, port=port, settings=Settings(anonymized_telemetry=False)
-        )
+
+        # -----------------------------------------------------------------
+        # Preferred: connect to an external Chroma server (HttpClient).
+        # -----------------------------------------------------------------
         try:
-            if hasattr(_client, "_server") and hasattr(_client._server, "_session"):
-                _client._server._session.timeout = httpx.Timeout(timeout_ms / 1000)
+            _client = HttpClient(
+                host=host, port=port, settings=Settings(anonymized_telemetry=False)
+            )
+
+            # Patch the underlying httpx timeout if possible – newer client
+            # versions expose the session object.
+            try:
+                if hasattr(_client, "_server") and hasattr(_client._server, "_session"):
+                    _client._server._session.timeout = httpx.Timeout(timeout_ms / 1000)
+            except Exception:
+                logger.warning("Failed to configure Chroma timeout", exc_info=True)
+
         except Exception:
-            logger.warning("Failed to configure Chroma timeout", exc_info=True)
+            # ----------------------------------------------------------------
+            # Fallback: run an *in-process* ephemeral Chroma instance.  This
+            # keeps the application functional even when the external vector
+            # store is mis-configured or temporarily unavailable (e.g. missing
+            # Docker volume leading to *sqlite3.OperationalError: unable to
+            # open database file*).
+            # ----------------------------------------------------------------
+
+            logger.warning(
+                "Falling back to in-process Chroma instance – external server"
+                " unavailable",
+                exc_info=True,
+            )
+
+            _client = EphemeralClient(Settings(anonymized_telemetry=False))
+
     return _client
 
 
@@ -357,6 +423,43 @@ async def search(
                 return col.query(**kwargs)
 
             res: QueryResult = await anyio.to_thread.run_sync(_run_query)
+    except InvalidDimensionException:
+        # Existing collection has wrong dimensionality (e.g. was created with
+        # OpenAI embeddings but we now run in local MiniLM mode).  Drop and
+        # recreate the collection **once** and retry.
+
+        logger.warning(
+            "Chroma dimension mismatch – recreating collection and retrying"
+        )
+
+        try:
+            client = _get_client()
+            client.delete_collection("threads_memory")
+        except Exception:
+            logger.exception("Failed to delete mismatched collection")
+
+        # Clear cached reference so _get_collection() re-creates it with the
+        # current embedding dimensionality.
+        global _collection
+        _collection = None
+
+        try:
+            col = _get_collection()
+
+            def _run_query2() -> QueryResult:
+                n_results = top_k * oversample
+                kwargs: dict[str, Any] = {
+                    "query_texts": [query],
+                    "n_results": n_results,
+                }
+                if where:
+                    kwargs["where"] = where
+                return col.query(**kwargs)
+
+            res: QueryResult = await anyio.to_thread.run_sync(_run_query2)
+        except Exception:
+            logger.warning("Chroma search failed after recreation", exc_info=True)
+            return []
     except Exception:
         logger.warning("Chroma search failed", exc_info=True)
         return []

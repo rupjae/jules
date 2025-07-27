@@ -17,6 +17,7 @@ from ..agents import retrieval_agent as ra
 
 class ChatState(TypedDict, total=False):
     prompt: str
+    messages: list  # LangChain compatible message list
     info_packet: Optional[str]
     partial: Optional[str]
     # internal helper flag – not used by callers but simplifies routing
@@ -125,31 +126,52 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
     # ------------------------------------------------------------------
     # Real streaming flow
     # ------------------------------------------------------------------
-    messages: Sequence[dict[str, str]] = [{"role": "user", "content": state["prompt"]}]
+    # ------------------------------------------------------------------
+    # Build the ChatCompletion message list from prior context + current
+    # prompt.  ``state['messages']`` is expected to be a list of LangChain
+    # message objects produced by the HTTP layer.
+    # ------------------------------------------------------------------
+
+    lc_messages = list(state.get("messages", []))  # copy
+
     if state.get("info_packet"):
-        messages.append(
-            {
-                "role": "system",
-                "content": f"[Background notes]\n{state['info_packet']}",
-            }
+        from langchain.schema import SystemMessage
+
+        lc_messages.append(
+            SystemMessage(content=f"[Background notes]\n{state['info_packet']}")
         )
+
+    # Append the latest user prompt as a bare dictionary because we pass raw
+    # dicts to the OpenAI client below.
+    lc_messages.append({"role": "user", "content": state["prompt"]})
 
     stream = await client.chat.completions.create(
         model=cfg.jules.model,
-        messages=messages,  # type: ignore[arg-type]
+        messages=lc_messages,  # type: ignore[arg-type]
         stream=True,
         temperature=0.7,
     )
 
+    from langchain.schema import AIMessage
+
     full = ""
+    prior_messages = list(state.get("messages", []))
     async for chunk in stream:  # type: ignore[attr-defined]
         token = chunk.choices[0].delta.content or ""
         if token:
             full += token
-            yield {"partial": token}
+            # Yield structure compatible with router expectation
+            yield {
+                "llm": {"messages": prior_messages + [AIMessage(content=full)]},
+                "partial": token,
+            }
 
     # done – emit final content and propagate info_packet
-    yield {"content": full, "info_packet": state.get("info_packet")}
+    yield {
+        "llm": {"messages": prior_messages + [AIMessage(content=full)]},
+        "content": full,
+        "info_packet": state.get("info_packet"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +200,15 @@ def build_graph():
 
     sg.set_finish_point("jules_llm")
 
-    compiled = sg.compile()
+    # Attach persistent checkpointing so conversations can span requests.  We
+    # lazily import here to avoid circular dependencies.
+
+    try:
+        from ..checkpointer import get_checkpointer  # local import to prevent cycle
+
+        compiled = sg.compile(checkpointer=get_checkpointer())
+    except Exception:  # pragma: no cover – degrade gracefully when API changes
+        compiled = sg.compile()
 
     # ------------------------------------------------------------------
     # Convenience wrapper – yield *flattened* step dictionaries so tests can
@@ -228,16 +258,26 @@ def build_graph():
 
         yielded_any = False
         last_chunk: dict | None = None
-        async for c in jules_llm({"prompt": prompt, "info_packet": info_packet}):
+
+        search_decision = dec.get("search", False)
+
+        async for c in jules_llm(
+            {"prompt": prompt, "info_packet": info_packet}
+        ):
             yielded_any = True
             last_chunk = c
-            yield c
+            # propagate retrieval decision for UI consumers
+            yield {**c, "search_decision": search_decision}
 
         # ``jules_llm`` should always end with a *content* dict but in case it
         # doesn't we emit a minimal placeholder so downstream consumers stay
         # functional.
         if not yielded_any or (last_chunk is not None and "content" not in last_chunk):
-            yield {"content": "OK", "info_packet": info_packet}
+            yield {
+                "content": "OK",
+                "info_packet": info_packet,
+                "search_decision": search_decision,
+            }
 
     setattr(compiled, "stream", _stream)  # type: ignore[attr-defined]
 

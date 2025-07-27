@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 THREAD_ID_HEADER = "X-Thread-ID"
 
 
-def _build_langgraph_state(prompt: str) -> dict:
-    """Return LangGraph input state for *prompt* with timestamp and system text."""
+def _build_langgraph_state(prompt: str, history: list) -> dict:
+    """Return LangGraph input state incl. *history* + new user message."""
 
     prompts_path = Path(__file__).parent.parent / "prompts" / "root.system.md"
     try:
@@ -45,17 +45,50 @@ def _build_langgraph_state(prompt: str) -> dict:
         system_text = ""
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    messages: list = []
-    if system_text:
-        messages.append(SystemMessage(content=system_text))
+
+    # Start with previous conversation (already LangChain message objects)
+    messages: list = list(history)
+
+    # Ensure the system prompt is present exactly once at the beginning.
+    from langchain.schema import SystemMessage
+
+    if system_text and not any(isinstance(m, SystemMessage) for m in messages):
+        messages.insert(0, SystemMessage(content=system_text))
+
+    # Append the current user prompt
     messages.append(HumanMessage(content=prompt, additional_kwargs={"timestamp": now}))
-    return {"messages": messages}
+
+    return {
+        "prompt": prompt,
+        "messages": messages,
+    }
 
 
 async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str, None]:
     """Execute the graph and yield the assistant reply token by token."""
 
-    user_state = _build_langgraph_state(prompt)
+    # ------------------------------------------------------------------
+    # Load previous conversation from the persistent LangGraph checkpointer
+    # so the model has full context when generating the next reply.
+    # ------------------------------------------------------------------
+
+    saver = graph.checkpointer if hasattr(graph, "checkpointer") else None  # type: ignore[attr-defined]
+    cfg = {"configurable": {"thread_id": thread_id}}
+    history_msgs: list = []
+    if saver is not None:
+        try:
+            tup = saver.get_tuple(cfg)
+            if tup is not None:
+                cp = tup.checkpoint
+                if isinstance(cp, dict):
+                    history_msgs = cp.get("channel_values", {}).get("messages", []) or []
+                else:
+                    history_msgs = getattr(cp, "messages", []) or []
+        except Exception:
+            # non-fatal – continue with empty history
+            history_msgs = []
+
+    user_state = _build_langgraph_state(prompt, history_msgs)
 
     loop = asyncio.get_running_loop()
     q: asyncio.Queue[str | None] = asyncio.Queue()
@@ -109,6 +142,24 @@ async def stream_chat(prompt: str, thread_id: str, graph) -> AsyncGenerator[str,
             tg.start_soon(anyio.to_thread.run_sync, save_message, assistant_msg)
     except Exception:
         logger.warning("Chroma save failed", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Persist conversation to LangGraph checkpoint so future requests can
+    # reconstruct history.
+    # ------------------------------------------------------------------
+
+    if saver is not None:
+        try:
+            from langchain.schema import AIMessage
+
+            updated_messages = history_msgs + [
+                HumanMessage(content=prompt),
+                AIMessage(content=assistant_buffer),
+            ]
+
+            saver.put(cfg, {"messages": updated_messages})
+        except Exception:
+            logger.warning("Failed to update checkpoint", exc_info=True)
 
 
 async def _authorize(
@@ -317,12 +368,30 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
     signature (no pydantic model argument).
     """
 
+    # ------------------------------------------------------------------
+    # Resolve thread_id – honour incoming header/query param or generate new.
+    # ------------------------------------------------------------------
+
+    from uuid import uuid4, UUID  # local import to avoid heavy deps at module top
+
+    raw_id = request.headers.get(THREAD_ID_HEADER) or request.query_params.get(
+        "thread_id"
+    )
+    if raw_id is not None:
+        try:
+            thread_id = str(UUID(raw_id, version=4))
+        except ValueError:
+            thread_id = str(uuid4())
+    else:
+        thread_id = str(uuid4())
+
     # Build LangGraph instance – created at startup and cached on app state
     graph = request.app.state.graph
     state = {"prompt": prompt, "info_packet": None}
 
     async def event_generator():
         last_info: str | None = None
+        last_decision: bool | None = None
         # When running with real streaming the UI progressively renders
         # *partial* tokens.  In non-streaming scenarios (e.g. stub mode) the graph
         # may only emit one final *content* message – capture it so we can
@@ -334,6 +403,8 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
         # content on the client (the UI concatenates every incoming chunk).
         streamed_partials = False
 
+        assistant_full = ""
+
         async for output in run_graph(graph, state):
             # 1. Progressive tokens
             if "partial" in output:
@@ -341,6 +412,7 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
                 # Starlette will automatically prepend "data: " and append a
                 # final blank line when the yielded value is *str*.
                 yield output["partial"]
+                assistant_full += output["partial"]
 
             # 2. Final assistant message emitted when streaming is unavailable.
             #    Capture it so we can forward **once** the graph finishes – but
@@ -348,11 +420,13 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
             #    duplication on the client side).
             if "content" in output:
                 last_content = output["content"]
+                assistant_full = output["content"]
 
-            # 3. Keep track of the most recent info_packet so we can forward
-            #    it once the graph is done.
+            # 3. Capture retrieval metadata
             if "info_packet" in output:
                 last_info = output["info_packet"]
+            if "search_decision" in output:
+                last_decision = bool(output["search_decision"])
 
         # ------------------------------------------------------------------
         # Graph finished – emit any *content* captured from a non-streaming
@@ -391,13 +465,52 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
         # browser forwards as the text "null".  The React hook converts that
         # value back to the JavaScript `null` primitive.
 
-        payload = None if last_info is None else last_info
-        # ServerSentEvent will JSON-serialise non-str data, therefore convert
-        # `None` to the *string* "null" so the frontend can easily interpret
-        # it (the hook already maps the literal back to JavaScript null).
-        data_field = "null" if payload is None else payload
+        # Build payload object for the UI.  Keep backward-compatibility by
+        # sending a *string* when no decision flag is present – legacy clients
+        # parse `info_packet` as a plain string.
+
+        if last_decision is None:
+            data_field = "null" if last_info is None else last_info
+        else:
+            data_field = {
+                "info_packet": last_info,  # may be None
+                "search_decision": last_decision,
+            }
 
         yield {"event": "info_packet", "data": data_field}
+
+        # ------------------------------------------------------------------
+        # 4. Persist user + assistant messages (for retrieval and history)
+        # ------------------------------------------------------------------
+
+        try:
+            from db.chroma import save_message, StoredMsg  # local import
+            from db import sqlite  # lazy to avoid cost when unused
+            import time
+            from uuid import uuid4
+
+            user_msg = StoredMsg(
+                id=str(uuid4()),
+                thread_id=thread_id,
+                role="user",
+                content=prompt,
+                ts=time.time(),
+            )
+            assistant_msg = StoredMsg(
+                id=str(uuid4()),
+                thread_id=thread_id,
+                role="assistant",
+                content=assistant_full or last_content or "",
+                ts=time.time(),
+            )
+
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(anyio.to_thread.run_sync, save_message, user_msg)
+                tg.start_soon(anyio.to_thread.run_sync, save_message, assistant_msg)
+                tg.start_soon(sqlite.insert, sqlite.ChatMessage(**user_msg.model_dump()))
+                tg.start_soon(sqlite.insert, sqlite.ChatMessage(**assistant_msg.model_dump()))
+        except Exception:
+            logger.warning("Failed to persist messages", exc_info=True)
 
         # Keep the SSE connection alive with periodic comments so the browser
         # does **not** aggressively reconnect (which manifests as an endless

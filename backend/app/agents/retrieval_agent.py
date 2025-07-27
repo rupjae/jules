@@ -73,17 +73,135 @@ def _get_client() -> AsyncOpenAI | None:
 # Public helpers
 # ---------------------------------------------------------------------------
 
+#
+# The original implementation relied on a *static* heuristic to estimate
+# whether a user query would benefit from retrieval-augmented generation.  The
+# project requirements have since evolved – we now defer that decision to a
+# lightweight **LLM** classifier so that complex phrasing and domain-specific
+# language can be handled more accurately.
+#
+# The helper remains *synchronous* so callers do not have to change.  When an
+# OpenAI client is available we perform a minimal blocking request that asks a
+# dedicated model (default: the same *retrieval.model* specified in the
+# *agents.toml* config) to answer "yes" or "no".  In environments where the
+# dependency or API key is missing we transparently fall back to the previous
+# heuristic to preserve deterministic offline behaviour and keep the unit
+# tests untouched.
+#
+
 KEYWORDS = {"cite", "source", "reference", "link", "doc", "document"}
+
+# Separate *sync* client to avoid the need for ``asyncio.run`` inside the
+# synchronous public helper.
+try:
+    from openai import OpenAI as _SyncOpenAI  # type: ignore
+
+    _sync_openai_available = True
+except ImportError:  # pragma: no cover – dependency not installed
+    _SyncOpenAI = None  # type: ignore
+    _sync_openai_available = False
+
+
+_SYNC_OAI: _SyncOpenAI | None = None  # type: ignore[valid-type]
+
+
+def _get_sync_client():
+    """Return a cached *synchronous* OpenAI client or *None* when unavailable."""
+
+    global _SYNC_OAI
+    if _SYNC_OAI is not None:
+        return _SYNC_OAI
+
+    if not _sync_openai_available:
+        return None
+
+    import os
+
+    if not os.getenv("OPENAI_API_KEY"):
+        # No credentials – treat as unavailable so we fall back to heuristic.
+        return None
+
+    try:
+        _SYNC_OAI = _SyncOpenAI()  # type: ignore[arg-type]
+    except Exception:  # pragma: no cover – network/credential issues
+        _SYNC_OAI = None  # type: ignore
+    return _SYNC_OAI
+
+
+def _llm_decision(prompt: str) -> bool | None:  # noqa: D401 – imperative name preferred
+    """Return *True*/*False* when the LLM call succeeds; otherwise *None*."""
+
+    client = _get_sync_client()
+    if client is None:
+        return None
+
+    system = (
+        "You are a boolean classifier. Return 'yes' (without quotes) when "
+        "fetching external documents (e.g. knowledge base, web pages, "
+        "company docs) could provide *helpful additional information* that "
+        "would likely improve the answer to the user's query. Return 'no' "
+        "when the model can already answer confidently without any extra "
+        "context. Respond with a single word only: yes or no."
+    )
+
+    try:
+        resp = client.chat.completions.create(
+            model=cfg.model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=1,
+            temperature=0,
+        )
+        answer = (resp.choices[0].message.content or "").strip().lower()
+        if answer.startswith("y"):
+            return True
+        if answer.startswith("n"):
+            return False
+    except Exception:
+        logger.warning("OpenAI retrieval-decision call failed; using heuristic", exc_info=True)
+
+    # Any error or malformed response triggers the heuristic fall-back.
+    return None
 
 
 def need_search(prompt: str) -> bool:  # noqa: D401 – imperative name preferred
-    """Heuristic to decide if *prompt* likely benefits from retrieval."""
+    """Decide whether *prompt* likely benefits from retrieval.
+
+    The function first tries an LLM-based classifier for higher accuracy. When
+    that is not feasible (e.g. offline CI, missing API key) it falls back to a
+    deterministic heuristic to keep behaviour stable.
+    """
+
+    llm_result = _llm_decision(prompt)
+    if llm_result is not None:
+        logger.debug(
+            "need_search | decision_from=llm | result=%s",
+            llm_result,
+            extra={"code_path": __name__},
+        )
+        return llm_result
+
+    # ------------------------------------------------------------------
+    # Heuristic fall-back – unchanged from the previous implementation.
+    # ------------------------------------------------------------------
 
     lower = prompt.lower()
     if any(k in lower for k in KEYWORDS):
+        logger.debug(
+            "need_search | decision_from=heuristic | reason=keyword | result=True",
+            extra={"code_path": __name__},
+        )
         return True
-    # Consider longer questions as potentially needing more context.
-    return len(prompt.split()) > 75
+
+    decision = len(prompt.split()) > 75
+    logger.debug(
+        "need_search | decision_from=heuristic | reason=length | result=%s",
+        decision,
+        extra={"code_path": __name__},
+    )
+    return decision
 
 
 @trace

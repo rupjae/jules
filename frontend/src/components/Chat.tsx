@@ -17,6 +17,7 @@ interface Message {
   sender: 'user' | 'assistant';
   content: string;
   infoPacket?: string | null;
+  searchDecision?: boolean | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +133,7 @@ export function Chat() {
         return copy;
       });
     },
-    (pkt) => {
+    (meta) => {
       // Attach the info packet to the message that has just finished
       setMessages((prev) => {
         if (activeAssistantIdx === null || activeAssistantIdx >= prev.length)
@@ -141,7 +142,8 @@ export function Chat() {
         const copy = [...prev];
         copy[activeAssistantIdx] = {
           ...copy[activeAssistantIdx],
-          infoPacket: pkt,
+          infoPacket: meta.infoPacket,
+          searchDecision: meta.searchDecision,
         };
         return copy;
       });
@@ -210,15 +212,22 @@ export function Chat() {
             </Typography>
             {typeof window !== 'undefined' &&
               localStorage.getItem('showInfoPacket') === 'true' &&
-              m.infoPacket && (
+              (m.infoPacket || typeof m.searchDecision === 'boolean') && (
                 <Collapse in>
                   <Paper
                     elevation={1}
                     sx={{ p: 1, my: 1, bgcolor: 'grey.100' }}
                   >
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                      {m.infoPacket}
-                    </pre>
+                    {typeof m.searchDecision === 'boolean' && (
+                      <Typography variant="caption" sx={{ fontStyle: 'italic' }}>
+                        Retrieval considered helpful: {m.searchDecision ? 'Yes' : 'No'}
+                      </Typography>
+                    )}
+                    {m.infoPacket && (
+                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                        {m.infoPacket}
+                      </pre>
+                    )}
                   </Paper>
                 </Collapse>
               )}
