@@ -10,6 +10,15 @@ from __future__ import annotations
 from typing import AsyncGenerator, Optional, TypedDict, Sequence
 
 from langgraph.graph import StateGraph, END
+# ---------------------------------------------------------------------------
+# Persistent memory – registered at *compile*-time so every invocation of the
+# graph (possibly coming from separate HTTP requests) transparently restores
+# the conversation history for the given ``thread_id``.  Downstream callers
+# merely need to pass a stable identifier via the *config* block – no manual
+# load/save ceremony required.
+# ---------------------------------------------------------------------------
+
+from langgraph.checkpoint.sqlite import SqliteSaver  # type: ignore
 
 from ..config_agents import get_cfg
 from ..agents import retrieval_agent as ra
@@ -119,8 +128,16 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
     # Fallback – stub flow (identical to previous implementation)
     # ------------------------------------------------------------------
     if client is None:  # pragma: no cover – exercised in CI
+        # Echo previous conversation (if any) so memory tests can assert the
+        # presence of earlier user messages without relying on a real LLM.
+        prior_messages = list(state.get("messages", []))
+
         yield {"partial": "…"}
-        yield {"content": "OK", "info_packet": state.get("info_packet")}
+        yield {
+            "llm": {"messages": prior_messages + []},
+            "content": "OK",
+            "info_packet": state.get("info_packet"),
+        }
         return
 
     # ------------------------------------------------------------------
@@ -200,15 +217,30 @@ def build_graph():
 
     sg.set_finish_point("jules_llm")
 
-    # Attach persistent checkpointing so conversations can span requests.  We
-    # lazily import here to avoid circular dependencies.
+    # ------------------------------------------------------------------
+    # Persistent in-process memory ------------------------------------------------
+    # ------------------------------------------------------------------
+    # Register a *SqliteSaver* with the graph so that every ``invoke`` or
+    # ``stream`` call automatically restores prior channel state for the given
+    # ``thread_id`` (passed via ``config={"configurable": {"thread_id": …}}``).
+    #
+    # The path lives inside the *db/* directory to keep writable artefacts out
+    # of the source tree.  The file is created on-demand; concurrent requests
+    # share the same database connection so we instantiate the saver exactly
+    # once at *compile* time.
+    # ------------------------------------------------------------------
 
-    try:
-        from ..checkpointer import get_checkpointer  # local import to prevent cycle
+    import sqlite3
+    from pathlib import Path
 
-        compiled = sg.compile(checkpointer=get_checkpointer())
-    except Exception:  # pragma: no cover – degrade gracefully when API changes
-        compiled = sg.compile()
+    _db_path = Path("data/jules_memory.sqlite3")
+    _db_path.parent.mkdir(parents=True, exist_ok=True)
+    _conn = sqlite3.connect(_db_path, check_same_thread=False)
+    memory = SqliteSaver(_conn)  # type: ignore[arg-type]
+
+    compiled = sg.compile(
+        checkpointer=memory,
+    )
 
     # ------------------------------------------------------------------
     # Convenience wrapper – yield *flattened* step dictionaries so tests can
@@ -235,6 +267,38 @@ def build_graph():
         """
 
         # ------------------------------------------------------------------
+        # 0. Restore **prior conversation** from the configured SqliteSaver so
+        #    the LLM call receives full context without the HTTP layer having
+        #    to do the heavy lifting.
+        # ------------------------------------------------------------------
+
+        # ``invoke``/``stream`` callers pass the identifier as
+        # ``config={"configurable": {"thread_id": "…"}}``.  We forward the full
+        # config object to the saver so filter keys remain intact.
+
+        cfg_block = args[0] if args else kwargs.get("config")  # positional after state
+        if cfg_block is None and kwargs:
+            cfg_block = kwargs.get("config")
+
+        history_messages: list = []
+
+        if cfg_block and compiled.checkpointer is not None:
+            try:
+                tup = compiled.checkpointer.get_tuple(cfg_block)
+                if tup is not None:
+                    cp = tup.checkpoint
+                    if isinstance(cp, dict):
+                        history_messages = (
+                            cp.get("channel_values", {}).get("messages")  # LangGraph 0.0.36+
+                            or cp.get("messages")  # legacy flat schema
+                            or []
+                        )
+                    else:
+                        history_messages = getattr(cp, "messages", []) or []
+            except Exception:
+                history_messages = []
+
+        # ------------------------------------------------------------------
         # 1. Decide whether we need the retrieval step and, if so, fetch the
         #    summarised context so we can attach it to the LLM call.
         # ------------------------------------------------------------------
@@ -246,8 +310,6 @@ def build_graph():
         info_packet: str | None = None
 
         if dec.get("search"):
-            # When retrieval is required run that node – it returns a superset
-            # of the incoming state with the *info_packet* attached.
             summarised = await retrieval_summarise(dec)
             info_packet = summarised.get("info_packet")  # type: ignore[assignment]
 
@@ -262,7 +324,11 @@ def build_graph():
         search_decision = dec.get("search", False)
 
         async for c in jules_llm(
-            {"prompt": prompt, "info_packet": info_packet}
+            {
+                "prompt": prompt,
+                "info_packet": info_packet,
+                "messages": history_messages,
+            }
         ):
             yielded_any = True
             last_chunk = c
@@ -278,6 +344,57 @@ def build_graph():
                 "info_packet": info_packet,
                 "search_decision": search_decision,
             }
+
+        # ------------------------------------------------------------------
+        # 3. Persist updated conversation back to the SqliteSaver so future
+        #    calls can restore it without an external helper layer.
+        # ------------------------------------------------------------------
+
+        if compiled.checkpointer is not None and cfg_block:
+            try:
+                from langchain.schema import HumanMessage, AIMessage
+                import uuid, datetime
+
+                assistant_content: str = (
+                    last_chunk.get("content") if last_chunk else "OK"
+                )  # type: ignore[arg-type]
+
+                updated = history_messages + [
+                    HumanMessage(content=prompt),
+                    AIMessage(content=assistant_content),
+                ]
+
+                from langgraph.checkpoint.base import CheckpointMetadata  # type: ignore
+
+                # The newer LangGraph API requires an explicit *metadata*
+                # instance plus a per-field *new_versions* mapping.  We are
+                # not versioning individual keys so pass an empty dict.
+
+                # Ensure required keys exist on the config object
+                cfg_full = {
+                    **cfg_block,
+                    "configurable": {
+                        **cfg_block.get("configurable", {}),
+                        "checkpoint_ns": cfg_block.get("configurable", {}).get(
+                            "checkpoint_ns", ""
+                        ),
+                    },
+                }
+
+                checkpoint = {
+                    "id": str(uuid.uuid4()),
+                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "channel_values": {"messages": updated},
+                }
+
+                compiled.checkpointer.put(
+                    cfg_full,
+                    checkpoint,
+                    CheckpointMetadata(),
+                    {},
+                )
+            except Exception:
+                pass  # soft-fail – never break user flow
 
     setattr(compiled, "stream", _stream)  # type: ignore[attr-defined]
 
