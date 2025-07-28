@@ -1,3 +1,6 @@
-from .chat import ChatMessageIn
+from .chat import ChatMessageIn, RetrievalInfo
 
-__all__ = ["ChatMessageIn"]
+__all__ = [
+    "ChatMessageIn",
+    "RetrievalInfo",
+]

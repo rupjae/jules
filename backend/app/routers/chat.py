@@ -19,7 +19,7 @@ from db import sqlite
 from ..schemas import ChatMessageIn
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import HumanMessage
 from pathlib import Path
 from sse_starlette.sse import EventSourceResponse
 from sse_starlette import sse as sse_mod
@@ -489,7 +489,28 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
                 "search_decision": last_decision,
             }
 
+        # Legacy event – kept for backward compatibility ----------------
         yield {"event": "info_packet", "data": data_field}
+
+        # ------------------------------------------------------------------
+        # New SSE payload – full *RetrievalInfo* object ----------------------
+        # ------------------------------------------------------------------
+        if (
+            last_decision is not None
+            and request.query_params.get("show_retrieval") is not None
+        ):
+            try:
+                from ..schemas import RetrievalInfo
+
+                yield {
+                    "event": "retrieval_info",
+                    "data": RetrievalInfo(
+                        need_search=last_decision,
+                        info_packet=last_info,
+                    ).model_dump(),
+                }
+            except Exception:  # pragma: no cover – schema import should work
+                pass
 
         # ------------------------------------------------------------------
         # 4. Persist user + assistant messages (for retrieval and history)

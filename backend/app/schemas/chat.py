@@ -11,3 +11,13 @@ class ChatMessageIn(BaseModel):  # type: ignore[misc]
     thread_id: UUID4
     role: Literal["user", "assistant", "system", "tool"]
     content: str = Field(..., max_length=32000)
+
+
+# ---------------------------------------------------------------------------
+# Retrieval SSE payload ------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+
+class RetrievalInfo(BaseModel):  # noqa: D101 – thin DTO
+    need_search: bool
+    info_packet: str | None = None

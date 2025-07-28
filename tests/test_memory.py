@@ -8,7 +8,7 @@ conversation history has been restored from the saver automatically.
 
 from __future__ import annotations
 
-import asyncio
+import asyncio  # noqa: F401 – used for type hints / future extensions
 import os
 import tempfile
 from uuid import uuid4

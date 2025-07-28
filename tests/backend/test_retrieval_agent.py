@@ -1,6 +1,6 @@
 """Unit tests for *RetrievalResult* contract and size guarantees.*"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass  # noqa: F401 – fixture import
 
 
 import pytest
@@ -37,4 +37,3 @@ async def test_retrieval_result_contract(monkeypatch):
 
     # Rough token upper-bound: words ≤ 150 (fallback uses 1 word ≈ 1 token)
     assert len(result.info_packet.split()) <= 150
-

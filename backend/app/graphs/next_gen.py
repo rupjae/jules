@@ -7,7 +7,7 @@ CI can run without external credentials.
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, Optional, TypedDict, Sequence
+from typing import AsyncGenerator, Optional, TypedDict
 
 # Refactored to rely on LangGraph's built-in checkpoint orchestration –
 # no custom save / restore logic needed.
@@ -47,10 +47,10 @@ def build_chat_messages(system_prompt: str, history: list[dict]) -> list[dict]: 
 # Persistence
 # ---------------------------------------------------------------------------
 
-from langgraph.checkpoint.sqlite import SqliteSaver  # type: ignore
+from langgraph.checkpoint.sqlite import SqliteSaver  # type: ignore  # noqa: E402
 
-from ..config_agents import get_cfg
-from ..agents import retrieval_agent as ra
+from ..config_agents import get_cfg  # noqa: E402
+from ..agents import retrieval_agent as ra  # noqa: E402
 
 
 class ChatState(TypedDict, total=False):
@@ -207,57 +207,69 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
     # {"role": <system|user|assistant|tool>, "content": "…"} dictionaries.
     # ------------------------------------------------------------------
 
-    raw_messages: list[dict] = []
+    # ------------------------------------------------------------------
+    # 1. Extract the *system* prompt (first SystemMessage, if any) and convert
+    #    the remaining conversation history into the plain JSON structure
+    #    expected by the OpenAI SDK.
+    # ------------------------------------------------------------------
 
     try:
-        from langchain.schema import (
-            AIMessage,
-            HumanMessage,
-            SystemMessage,
-            ToolMessage,
-        )  # type: ignore
-    except ImportError:  # older LangChain without ToolMessage
+        from langchain.schema import AIMessage, HumanMessage, SystemMessage, ToolMessage  # type: ignore
+    except ImportError:  # pragma: no cover – older LangChain
         from langchain.schema import AIMessage, HumanMessage, SystemMessage  # type: ignore
 
-        class _Dummy:  # sentinel to keep isinstance check simple
+        class ToolMessage:  # type: ignore
             pass
 
-        ToolMessage = _Dummy  # type: ignore
+    system_prompt = ""
+    history: list[dict] = []
 
     for msg in list(state.get("messages", [])):
         if isinstance(msg, dict):
-            # Already in the correct wire format
-            raw_messages.append(msg)
-        elif isinstance(msg, AIMessage):
-            raw_messages.append({"role": "assistant", "content": msg.content})
-        elif isinstance(msg, HumanMessage):
-            raw_messages.append({"role": "user", "content": msg.content})
+            # Dicts are already in the wire format – treat system messages
+            # separately so the prompt is not duplicated later on.
+            role = msg.get("role")
+            if role == "system" and not system_prompt:
+                system_prompt = msg.get("content", "")
+            else:
+                history.append(msg)
         elif isinstance(msg, SystemMessage):
-            raw_messages.append({"role": "system", "content": msg.content})
+            if not system_prompt:
+                system_prompt = msg.content
+            else:
+                history.append({"role": "system", "content": msg.content})
+        elif isinstance(msg, HumanMessage):
+            history.append({"role": "user", "content": msg.content})
+        elif isinstance(msg, AIMessage):
+            history.append({"role": "assistant", "content": msg.content})
         elif isinstance(msg, ToolMessage):
-            raw_messages.append({"role": "tool", "content": msg.content})
+            history.append({"role": "tool", "content": getattr(msg, "content", "")})
         else:  # pragma: no cover – unknown/legacy type
             try:
                 role = getattr(msg, "role", "user")
                 content = getattr(msg, "content", str(msg))
-                raw_messages.append({"role": role, "content": content})
+                history.append({"role": role, "content": content})
             except Exception:
                 continue
 
-    # Prepend retrieval notes (if any) right after the root system message so
-    # they influence the assistant response without being confused for *user*
-    # input.
+    # Guarantee at least an empty system prompt so the builder always inserts
+    # the mandatory first message (OpenAI rejects an empty list).
+    messages = build_chat_messages(system_prompt, history)
+
+    # ------------------------------------------------------------------
+    # 2. Inject retrieval notes (info_packet) – inserted *after* the primary
+    #    system prompt so the model treats the packet as additional
+    #    instructions rather than user input.
+    # ------------------------------------------------------------------
+
     if state.get("info_packet"):
-        # Ensure the primary system prompt (if any) stays *first*.
-        insert_idx = 1 if raw_messages and isinstance(raw_messages[0], dict) and raw_messages[0].get("role") == "system" else 0
-        raw_messages.insert(
-            insert_idx,
+        messages.insert(
+            1,
             {"role": "system", "content": f"[Retrieval Info]\n{state['info_packet']}"},
         )
 
-    # Append the latest user prompt as a bare dictionary because we pass raw
-    # dicts to the OpenAI client below.
-    raw_messages.append({"role": "user", "content": state["prompt"]})
+    # Append the latest user prompt so the model sees the current request.
+    messages.append({"role": "user", "content": state["prompt"]})
 
     # ------------------------------------------------------------------
     # Safety check – raise early during development when we accidentally pass
@@ -265,11 +277,11 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
     # errors in production that would otherwise be hard to debug.
     # ------------------------------------------------------------------
 
-    assert all("role" in m for m in raw_messages), "ChatMessage missing role"
+    assert all("role" in m for m in messages), "ChatMessage missing role"
 
     stream = await client.chat.completions.create(
         model=cfg.jules.model,
-        messages=raw_messages,  # type: ignore[arg-type]
+        messages=messages,  # type: ignore[arg-type]
         stream=True,
         temperature=0.7,
     )
@@ -305,10 +317,10 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
 # ---------------------------------------------------------------------------
 
 
-from typing import Optional as _Opt
+# We import Optional at top of file – reuse it here.
 
 
-def build_graph(db_url: _Opt[str] = None):
+def build_graph(db_url: Optional[str] = None):
     """Construct and compile the LangGraph pipeline.
 
     Parameters
@@ -365,8 +377,6 @@ def build_graph(db_url: _Opt[str] = None):
     # the next request without manual ``get`` / ``put`` calls.
     # ------------------------------------------------------------------
 
-    from contextlib import AbstractContextManager
-
     _url = db_url or "data/jules_memory.sqlite3"
 
     # --------------------------------------------------------------
@@ -411,7 +421,7 @@ def build_graph(db_url: _Opt[str] = None):
             without persistence).
             """
 
-            import sqlite3, logging
+            import sqlite3, logging  # noqa: E401 – single-line import inside hot path
 
             if self._readonly_reinit:
                 return
@@ -471,7 +481,7 @@ def build_graph(db_url: _Opt[str] = None):
             Path(_url).parent.mkdir(parents=True, exist_ok=True)  # type: ignore[arg-type]
             conn = sqlite3.connect(_url, check_same_thread=False)
         except (_SqliteOpErr, PermissionError):  # pragma: no cover – runtime env only
-            import logging, tempfile, uuid as _uuid
+            import logging, tempfile, uuid as _uuid  # noqa: E401
 
             _logger = logging.getLogger(__name__)
 
@@ -494,7 +504,7 @@ def build_graph(db_url: _Opt[str] = None):
                 )
                 _url = ":memory:"
                 conn = sqlite3.connect(_url, check_same_thread=False)
-    saver_sync = SqliteSaver(conn)
+    _saver_sync = SqliteSaver(conn)
     saver = _AsyncWrapper(conn)
 
     # --------------------------------------------------------------

@@ -16,12 +16,31 @@ from typing import Sequence
 # Public dataclass -----------------------------------------------------------
 # ---------------------------------------------------------------------------
 
+# Order-sensitive imports -----------------------------------------------------
+# ``get_cfg`` must be imported **early** so the singleton initialises at
+# import-time.  This avoids E402 complaints from *ruff* and keeps the module
+# level configuration close to the other top-level constants.
+
+# External / standard lib -----------------------------------------------------
+
 from dataclasses import dataclass
 
+# Project-local imports ------------------------------------------------------
 
-# The new retrieval contract surfaces three values so downstream callers can
-# transparently decide how to incorporate external context into the LLM
-# prompt *and* expose the decision to the UI.
+from ..config_agents import get_cfg
+from ..tools.chroma_search import chroma_search
+from jules.logging import trace
+
+# ---------------------------------------------------------------------------
+# Public dataclass -----------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+# The retrieval contract surfaces three values so downstream callers can
+# transparently decide how to incorporate external context into the LLM prompt
+# *and* expose the decision to the UI.
+
+
+# Dataclasses come **after** imports so ruff E402 passes.
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,10 +48,6 @@ class RetrievalResult:  # noqa: D101 – self-explanatory container
     need_search: bool
     info_packet: str | None
     chunks: list[str]
-
-from ..config_agents import get_cfg
-from ..tools.chroma_search import chroma_search
-from jules.logging import trace
 
 # ---------------------------------------------------------------------------
 # Optional runtime dependencies
