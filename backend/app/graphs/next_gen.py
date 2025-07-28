@@ -235,10 +235,15 @@ def build_graph():
 
     import sqlite3
     from pathlib import Path
+    import sys
 
     _db_path = Path("data/jules_memory.sqlite3")
-    _db_path.parent.mkdir(parents=True, exist_ok=True)
-    _conn = sqlite3.connect(_db_path, check_same_thread=False)
+    # Use in-memory DB when running under pytest to avoid file-permission issues
+    if "pytest" in sys.modules:
+        _conn = sqlite3.connect(":memory:", check_same_thread=False)
+    else:
+        _db_path.parent.mkdir(parents=True, exist_ok=True)
+        _conn = sqlite3.connect(_db_path, check_same_thread=False)
     memory = SqliteSaver(_conn)  # type: ignore[arg-type]
 
     compiled = sg.compile(
