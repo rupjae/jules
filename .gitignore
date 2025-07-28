@@ -73,3 +73,5 @@ data/chromadb/
 work-order.md
 # runtime LangGraph memory DB (created automatically)
 data/jules_memory.sqlite3
+
+tmp/
