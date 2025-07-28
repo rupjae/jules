@@ -177,7 +177,20 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
 
     raw_messages: list[dict] = []
 
-    from langchain.schema import AIMessage, HumanMessage, SystemMessage, ToolMessage  # noqa: WPS433
+    try:
+        from langchain.schema import (
+            AIMessage,
+            HumanMessage,
+            SystemMessage,
+            ToolMessage,
+        )  # type: ignore
+    except ImportError:  # older LangChain without ToolMessage
+        from langchain.schema import AIMessage, HumanMessage, SystemMessage  # type: ignore
+
+        class _Dummy:  # sentinel to keep isinstance check simple
+            pass
+
+        ToolMessage = _Dummy  # type: ignore
 
     for msg in list(state.get("messages", [])):
         if isinstance(msg, dict):
