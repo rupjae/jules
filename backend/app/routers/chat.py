@@ -11,7 +11,7 @@ from typing import AsyncGenerator, List, Optional
 import logging
 import asyncio
 import io
-from uuid import UUID, uuid4
+# uuid imported earlier for other uses; keep
 import time
 import anyio
 from db.chroma import save_message, StoredMsg, SearchHit
@@ -33,6 +33,29 @@ router = APIRouter(prefix="/api")
 
 logger = logging.getLogger(__name__)
 THREAD_ID_HEADER = "X-Thread-ID"
+
+
+# ---------------------------------------------------------------------------
+# Helper to unify thread_id lookup across endpoints
+# ---------------------------------------------------------------------------
+
+
+def _get_thread_id(req: Request) -> str:
+    """Return stable thread identifier.
+
+    Order of precedence:
+    1. X-Thread-ID header (preferred to hide from proxies/sanitizers)
+    2. ``thread_id`` query parameter (used by EventSource URL)
+    3. "thread_id" cookie (sticky across page reloads)
+    4. Fresh UUID4 – first ever visit / cleared storage
+    """
+
+    return (
+        (req.headers.get(THREAD_ID_HEADER) or "").strip()
+        or (req.query_params.get("thread_id") or "").strip()
+        or (req.cookies.get("thread_id") or "").strip()
+        or uuid4().hex
+    )
 
 
 def _build_langgraph_state(prompt: str, history: list) -> dict:
@@ -369,21 +392,10 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
     """
 
     # ------------------------------------------------------------------
-    # Resolve thread_id – honour incoming header/query param or generate new.
+    # Resolve thread_id – honour header / query / cookie, else generate.
     # ------------------------------------------------------------------
 
-    from uuid import uuid4, UUID  # local import to avoid heavy deps at module top
-
-    raw_id = request.headers.get(THREAD_ID_HEADER) or request.query_params.get(
-        "thread_id"
-    )
-    if raw_id is not None:
-        try:
-            thread_id = str(UUID(raw_id, version=4))
-        except ValueError:
-            thread_id = str(uuid4())
-    else:
-        thread_id = str(uuid4())
+    thread_id = _get_thread_id(request)
 
     # Build LangGraph instance – created at startup and cached on app state
     graph = request.app.state.graph
@@ -527,4 +539,7 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
             # Client disconnected – exit quietly.
             return
 
-    return EventSourceResponse(event_generator())
+    resp = EventSourceResponse(event_generator())
+    # Persist the identifier so subsequent page loads continue the thread.
+    resp.set_cookie("thread_id", thread_id, max_age=60 * 60 * 24 * 30)
+    return resp

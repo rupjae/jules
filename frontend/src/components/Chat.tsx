@@ -153,7 +153,8 @@ export function Chat() {
       setLoading(false);
       setStreamInput(null);
     },
-    backendUrl
+    backendUrl,
+    threadId
   );
 
   const sendMessage = () => {
