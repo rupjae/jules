@@ -215,7 +215,7 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
     if state.get("info_packet"):
         from langchain.schema import SystemMessage
 
-        lc_messages.append(
+        raw_messages.append(
             SystemMessage(content=f"[Background notes]\n{state['info_packet']}")
         )
 
