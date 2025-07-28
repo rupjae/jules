@@ -41,7 +41,7 @@ def get_checkpointer():  # noqa: D401
     # 2) the default path would have been used.
     # ---------------------------------------------------------------------
 
-    default_path = "data/checkpoints.sqlite"
+    default_path = "data/jules_memory.sqlite3"
     running_under_pytest = "pytest" in sys.modules  # type: ignore[arg-type]
 
     if running_under_pytest and settings.checkpoint_db == default_path:

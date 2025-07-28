@@ -405,7 +405,7 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
 
         assistant_full = ""
 
-        async for output in run_graph(graph, state):
+        async for output in run_graph(graph, state, thread_id=thread_id):
             # 1. Progressive tokens
             if "partial" in output:
                 streamed_partials = True
