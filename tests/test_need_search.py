@@ -6,6 +6,14 @@ length trigger to ensure the function behaves as expected.
 
 
 from backend.app.agents import retrieval_agent as ra
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _disable_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force heuristic path by skipping the OpenAI classifier."""
+
+    monkeypatch.setattr(ra, "_llm_decision", lambda *_: None)
 
 
 def test_keyword_trigger():
