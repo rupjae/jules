@@ -14,6 +14,28 @@ from typing import AsyncGenerator, Optional, TypedDict, Sequence
 from langgraph.graph import END, StateGraph
 
 # ---------------------------------------------------------------------------
+# Message builder util – ensures every dict has the mandatory *role* key so
+# we never hit the OpenAI 400 "messages[x].role is required" error again.
+# ---------------------------------------------------------------------------
+
+
+def build_chat_messages(system_prompt: str, history: list[dict]) -> list[dict]:  # noqa: D401
+    """Return `[{{role, content}}, …]` ready for OpenAI.
+
+    The helper guards against accidental invalid shapes by asserting that each
+    element sports a *role* attribute.  Downstream unit-tests rely on that
+    behaviour (see *tests/backend/test_message_builder.py*).
+    """
+
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    messages.extend(history)
+
+    # Developer error guard
+    assert all("role" in m for m in messages), "ChatMessage missing role"
+
+    return messages
+
+# ---------------------------------------------------------------------------
 # Persistent memory – registered at *compile*-time so every invocation of the
 # graph (possibly coming from separate HTTP requests) transparently restores
 # the conversation history for the given ``thread_id``.  Downstream callers
@@ -108,12 +130,22 @@ def retrieval_decide(state: ChatState) -> ChatState:  # noqa: D401
 
 
 async def retrieval_summarise(state: ChatState) -> ChatState:
-    res = ra.search_and_summarise(state["prompt"])
-    if hasattr(res, "__await__"):
-        summary = await res  # type: ignore[misc]
-    else:  # pragma: no cover – patched sync stub
-        summary = res  # type: ignore[assignment]
-    return {**state, "info_packet": summary}
+    """Attach *RetrievalResult* to the graph state when search was executed."""
+
+    result = ra.search_and_summarise(state["prompt"])
+    if hasattr(result, "__await__"):
+        result = await result  # type: ignore[misc]
+
+    # When retrieval was skipped we still propagate the *need_search* flag so
+    # downstream nodes (and the SSE layer) can surface the decision.
+    return {
+        **state,
+        "info_packet": result.info_packet,
+        "retrieval": {
+            "need_search": result.need_search,
+            "info_packet": result.info_packet,
+        },
+    }
 
 
 async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D401
@@ -212,16 +244,28 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
             except Exception:
                 continue
 
+    # Prepend retrieval notes (if any) right after the root system message so
+    # they influence the assistant response without being confused for *user*
+    # input.
     if state.get("info_packet"):
-        from langchain.schema import SystemMessage
-
-        raw_messages.append(
-            SystemMessage(content=f"[Background notes]\n{state['info_packet']}")
+        # Ensure the primary system prompt (if any) stays *first*.
+        insert_idx = 1 if raw_messages and isinstance(raw_messages[0], dict) and raw_messages[0].get("role") == "system" else 0
+        raw_messages.insert(
+            insert_idx,
+            {"role": "system", "content": f"[Retrieval Info]\n{state['info_packet']}"},
         )
 
     # Append the latest user prompt as a bare dictionary because we pass raw
     # dicts to the OpenAI client below.
     raw_messages.append({"role": "user", "content": state["prompt"]})
+
+    # ------------------------------------------------------------------
+    # Safety check – raise early during development when we accidentally pass
+    # invalid shapes to the OpenAI client.  This prevents 400 Bad Request
+    # errors in production that would otherwise be hard to debug.
+    # ------------------------------------------------------------------
+
+    assert all("role" in m for m in raw_messages), "ChatMessage missing role"
 
     stream = await client.chat.completions.create(
         model=cfg.jules.model,
@@ -544,3 +588,6 @@ def build_graph(db_url: _Opt[str] = None):
 
 
 __all__ = ["build_graph"]
+
+# Keep builder util public for tests ----------------------------------------
+__all__.append("build_chat_messages")

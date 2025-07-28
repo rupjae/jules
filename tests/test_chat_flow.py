@@ -29,7 +29,11 @@ async def test_search_path(monkeypatch):
     from backend.app.graphs.next_gen import build_graph
 
     monkeypatch.setattr(ra, "need_search", lambda *_: True)
-    monkeypatch.setattr(ra, "search_and_summarise", lambda *_: "• fact A\n• fact B")
+    monkeypatch.setattr(
+        ra,
+        "search_and_summarise",
+        lambda *_: ra.RetrievalResult(True, "• fact A\n• fact B", ["fact A", "fact B"]),
+    )
 
     graph = build_graph()
     state = {"prompt": "Please cite sources about X", "info_packet": None}
@@ -40,4 +44,3 @@ async def test_search_path(monkeypatch):
 
     assert pkt.startswith("•")
     assert len(pkt.split()) <= 150
-

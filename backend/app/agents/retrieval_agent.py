@@ -12,6 +12,24 @@ from __future__ import annotations
 import logging
 from typing import Sequence
 
+# ---------------------------------------------------------------------------
+# Public dataclass -----------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass
+
+
+# The new retrieval contract surfaces three values so downstream callers can
+# transparently decide how to incorporate external context into the LLM
+# prompt *and* expose the decision to the UI.
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalResult:  # noqa: D101 – self-explanatory container
+    need_search: bool
+    info_packet: str | None
+    chunks: list[str]
+
 from ..config_agents import get_cfg
 from ..tools.chroma_search import chroma_search
 from jules.logging import trace
@@ -204,22 +222,12 @@ def need_search(prompt: str) -> bool:  # noqa: D401 – imperative name preferre
     return decision
 
 
-@trace
-async def search_and_summarise(prompt: str) -> str:
-    """Run semantic search and return a ≤ *cheat_tokens* bullet-point summary."""
-
-    # ---------------------------------------------------------------------
-    # 1. Retrieve
-    # ---------------------------------------------------------------------
-    hits: Sequence[str] = await chroma_search(prompt, k=cfg.k_hits)  # type: ignore[arg-type]
+async def _summarise_chunks(hits: Sequence[str]) -> str:
+    """Summarise *hits* into a ≤ *cheat_tokens* bullet-point packet."""
 
     if not hits:
         return ""
 
-    # ---------------------------------------------------------------------
-    # 2. Summarise via OpenAI – revert to a trivial join when the client is
-    #    not available (e.g. during unit tests).
-    # ---------------------------------------------------------------------
     client = _get_client()
     if client is None:
         joined = "\n".join(f"• {h.strip()}" for h in hits)
@@ -247,6 +255,60 @@ async def search_and_summarise(prompt: str) -> str:
         summary = "\n".join(f"• {h.strip()}" for h in hits)
 
     return _trim_tokens(summary, cfg.cheat_tokens)
+
+
+# ---------------------------------------------------------------------------
+# Public API ---- new --------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+
+@trace
+async def search_and_summarise(prompt: str) -> RetrievalResult:  # noqa: D401 – imperative
+    """Return a full *RetrievalResult* for *prompt*.
+
+    The function wraps the previous implementation while enriching the result
+    so downstream nodes can:
+        • decide whether the search was executed (*need_search*),
+        • prepend the generated *info_packet* to the LLM messages, and
+        • expose the raw *chunks* (passages) for future debugging features.
+    """
+
+    # Decide first – this is a cheap heuristic/LLM call.
+    needed = need_search(prompt)
+
+    if not needed:
+        logger.log(
+            5,  # TRACE level (see project logging guidelines)
+            "retrieval | need_search=no | prompt_len=%s",
+            len(prompt.split()),
+            extra={"code_path": __name__},
+        )
+        return RetrievalResult(False, None, [])
+
+    # ------------------------------------------------------------------
+    # 1. Retrieve – best-effort, never raises upstream.  We keep *await*
+    # outside the try/except so testing with a monkey-patched sync stub still
+    # works (it might return a list directly).
+    # ------------------------------------------------------------------
+
+    hits: Sequence[str]
+    result = chroma_search(prompt, k=cfg.k_hits)  # type: ignore[arg-type]
+    hits = await result if hasattr(result, "__await__") else result  # type: ignore[arg-type]
+
+    # 2. Summarise (may fall back to cheap join)
+    info_packet = await _summarise_chunks(hits)
+
+    # TRACE-level log so operators can inspect decisions & packet size.
+    token_estimate = len(info_packet.split())
+    logger.log(
+        5,
+        "retrieval | need_search=yes | hits=%s | info_tokens=%s",
+        len(hits),
+        token_estimate,
+        extra={"code_path": __name__},
+    )
+
+    return RetrievalResult(True, info_packet, list(hits))
 
 
 # ---------------------------------------------------------------------------
@@ -287,4 +349,5 @@ def _trim_tokens(text: str, limit: int | None) -> str:
 __all__ = [
     "need_search",
     "search_and_summarise",
+    "RetrievalResult",
 ]
