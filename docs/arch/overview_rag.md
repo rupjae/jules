@@ -52,3 +52,28 @@ rejects body payloads and only supports **GET** requests for maximum
 compatibility with the native `EventSource` API.
 
 See `docs/arch/next_gen_graph.md` for a Mermaid sequence diagram.
+
+---
+
+### Retrieval Info SSE
+
+Starting with PR #34 the backend emits an **additional SSE event** that carries
+the *search decision* and optional *info-packet* so the UI can display it in a
+collapsible panel.
+
+```
+Event: retrieval_info
+Payload:
+{
+  "need_search": bool,
+  "info_packet": str | null
+}
+```
+
+Activate the event by adding the `show_retrieval=true` flag (any of
+`1`, `true`, `yes` works) to the `/api/chat/stream` query string. When the flag
+is absent or evaluates to *false* the backend omits the event entirely to avoid
+unnecessary traffic.
+
+The React frontend surfaces a “Show Retrieval Info” toggle that toggles this
+flag, listens for the event, and renders both the decision and the packet.

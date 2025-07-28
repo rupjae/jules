@@ -401,6 +401,16 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
     graph = request.app.state.graph
     state = {"prompt": prompt, "info_packet": None}
 
+    # ------------------------------------------------------------------
+    # Parse optional *show_retrieval* query flag.  Treat typical truthy
+    # values ("1", "true", "yes") as *True* – everything else falls back
+    # to *False*.  Using .get() avoids raising KeyError when the parameter is
+    # omitted entirely (default browser request).
+    # ------------------------------------------------------------------
+
+    raw_flag = request.query_params.get("show_retrieval", "false")
+    show_retrieval = str(raw_flag).lower() in {"1", "true", "yes"}
+
     async def event_generator():
         last_info: str | None = None
         last_decision: bool | None = None
@@ -495,10 +505,7 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
         # ------------------------------------------------------------------
         # New SSE payload – full *RetrievalInfo* object ----------------------
         # ------------------------------------------------------------------
-        if (
-            last_decision is not None
-            and request.query_params.get("show_retrieval") is not None
-        ):
+        if last_decision is not None and show_retrieval:
             try:
                 from ..schemas import RetrievalInfo
 
