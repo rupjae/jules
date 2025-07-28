@@ -31,7 +31,7 @@ class Settings(BaseSettings):  # type: ignore[misc]
     # Send `Authorization: Bearer <token>`.
     auth_token: Optional[str] = Field(None, env="JULES_AUTH_TOKEN")
     # Path to the persistent LangGraph checkpoint database.
-    checkpoint_db: str = Field("data/checkpoints.sqlite", env="JULES_CHECKPOINT_DB")
+    checkpoint_db: str = Field("data/jules_memory.sqlite3", env="JULES_CHECKPOINT_DB")
 
     # ---------------------------------------------------------------------
     # Vector search parameters (defaults tuned for small-scale demos).
