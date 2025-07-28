@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import AsyncGenerator, Optional, TypedDict, Sequence
 
 from langgraph.graph import StateGraph, END
+
 # ---------------------------------------------------------------------------
 # Persistent memory – registered at *compile*-time so every invocation of the
 # graph (possibly coming from separate HTTP requests) transparently restores
@@ -60,6 +61,7 @@ def _get_client() -> AsyncOpenAI | None:
     global _OAI
     if _OAI is not None:
         import os
+
         if os.getenv("OPENAI_API_KEY"):
             return _OAI
         # key missing – pretend unavailable
@@ -117,6 +119,7 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
     """
 
     import sys
+
     client = _get_client()
 
     # Unit-tests should never hit the real OpenAI endpoint – when the test
@@ -289,7 +292,9 @@ def build_graph():
                     cp = tup.checkpoint
                     if isinstance(cp, dict):
                         history_messages = (
-                            cp.get("channel_values", {}).get("messages")  # LangGraph 0.0.36+
+                            cp.get("channel_values", {}).get(
+                                "messages"
+                            )  # LangGraph 0.0.36+
                             or cp.get("messages")  # legacy flat schema
                             or []
                         )
