@@ -18,6 +18,6 @@ class ChatMessageIn(BaseModel):  # type: ignore[misc]
 # ---------------------------------------------------------------------------
 
 
-class RetrievalInfo(BaseModel):  # noqa: D101 – thin DTO
+class RetrievalInfo(BaseModel):  # type: ignore[misc]  # noqa: D101 – thin DTO
     need_search: bool
     info_packet: str | None = None
