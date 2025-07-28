@@ -11,7 +11,7 @@ from typing import AsyncGenerator, List, Optional
 import logging
 import asyncio
 import io
-# uuid imported earlier for other uses; keep
+from uuid import UUID, uuid4  # type: ignore
 import time
 import anyio
 from db.chroma import save_message, StoredMsg, SearchHit
