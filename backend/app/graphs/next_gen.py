@@ -169,7 +169,35 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
     # message objects produced by the HTTP layer.
     # ------------------------------------------------------------------
 
-    lc_messages = list(state.get("messages", []))  # copy
+    # ------------------------------------------------------------------
+    # Convert stored LangChain message objects (or already-serialised dicts)
+    # into the *raw* JSON shape expected by the OpenAI client: a list of
+    # {"role": <system|user|assistant|tool>, "content": "…"} dictionaries.
+    # ------------------------------------------------------------------
+
+    raw_messages: list[dict] = []
+
+    from langchain.schema import AIMessage, HumanMessage, SystemMessage, ToolMessage  # noqa: WPS433
+
+    for msg in list(state.get("messages", [])):
+        if isinstance(msg, dict):
+            # Already in the correct wire format
+            raw_messages.append(msg)
+        elif isinstance(msg, AIMessage):
+            raw_messages.append({"role": "assistant", "content": msg.content})
+        elif isinstance(msg, HumanMessage):
+            raw_messages.append({"role": "user", "content": msg.content})
+        elif isinstance(msg, SystemMessage):
+            raw_messages.append({"role": "system", "content": msg.content})
+        elif isinstance(msg, ToolMessage):
+            raw_messages.append({"role": "tool", "content": msg.content})
+        else:  # pragma: no cover – unknown/legacy type
+            try:
+                role = getattr(msg, "role", "user")
+                content = getattr(msg, "content", str(msg))
+                raw_messages.append({"role": role, "content": content})
+            except Exception:
+                continue
 
     if state.get("info_packet"):
         from langchain.schema import SystemMessage
@@ -180,11 +208,11 @@ async def jules_llm(state: ChatState) -> AsyncGenerator[dict, None]:  # noqa: D4
 
     # Append the latest user prompt as a bare dictionary because we pass raw
     # dicts to the OpenAI client below.
-    lc_messages.append({"role": "user", "content": state["prompt"]})
+    raw_messages.append({"role": "user", "content": state["prompt"]})
 
     stream = await client.chat.completions.create(
         model=cfg.jules.model,
-        messages=lc_messages,  # type: ignore[arg-type]
+        messages=raw_messages,  # type: ignore[arg-type]
         stream=True,
         temperature=0.7,
     )
