@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import httpx  # type: ignore[import-not-found]
 import pytest
-import respx  # type: ignore[import-not-found]
+
+try:  # pragma: no cover - optional dependency for HTTP mocking
+    import respx  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # pragma: no cover - skip tests if respx missing
+    respx = None
 
 from jules.tools import ChromaSearchTool
 
@@ -14,6 +18,7 @@ FIXTURE = [
 
 
 @pytest.mark.anyio("asyncio")
+@pytest.mark.skipif(respx is None, reason="respx not installed")  # type: ignore[misc]
 @respx.mock  # type: ignore[misc]
 async def test_happy_path() -> None:
     route = respx.get("http://localhost:8000/api/chat/search").mock(
@@ -27,6 +32,7 @@ async def test_happy_path() -> None:
 
 
 @pytest.mark.anyio("asyncio")
+@pytest.mark.skipif(respx is None, reason="respx not installed")  # type: ignore[misc]
 @respx.mock  # type: ignore[misc]
 async def test_thread_filter_param() -> None:
     respx.get("http://localhost:8000/api/chat/search").mock(
@@ -39,6 +45,7 @@ async def test_thread_filter_param() -> None:
 
 
 @pytest.mark.anyio("asyncio")
+@pytest.mark.skipif(respx is None, reason="respx not installed")  # type: ignore[misc]
 @respx.mock  # type: ignore[misc]
 async def test_http_error() -> None:
     respx.get("http://localhost:8000/api/chat/search").mock(
