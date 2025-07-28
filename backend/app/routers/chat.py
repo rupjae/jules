@@ -19,7 +19,7 @@ from db import sqlite
 from ..schemas import ChatMessageIn
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import HumanMessage
 from pathlib import Path
 from sse_starlette.sse import EventSourceResponse
 from sse_starlette import sse as sse_mod
@@ -401,6 +401,16 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
     graph = request.app.state.graph
     state = {"prompt": prompt, "info_packet": None}
 
+    # ------------------------------------------------------------------
+    # Parse optional *show_retrieval* query flag.  Treat typical truthy
+    # values ("1", "true", "yes") as *True* – everything else falls back
+    # to *False*.  Using .get() avoids raising KeyError when the parameter is
+    # omitted entirely (default browser request).
+    # ------------------------------------------------------------------
+
+    raw_flag = request.query_params.get("show_retrieval", "false")
+    show_retrieval = str(raw_flag).lower() in {"1", "true", "yes"}
+
     async def event_generator():
         last_info: str | None = None
         last_decision: bool | None = None
@@ -489,7 +499,25 @@ async def chat_stream(request: Request, prompt: str = Query(..., description="Us
                 "search_decision": last_decision,
             }
 
+        # Legacy event – kept for backward compatibility ----------------
         yield {"event": "info_packet", "data": data_field}
+
+        # ------------------------------------------------------------------
+        # New SSE payload – full *RetrievalInfo* object ----------------------
+        # ------------------------------------------------------------------
+        if last_decision is not None and show_retrieval:
+            try:
+                from ..schemas import RetrievalInfo
+
+                yield {
+                    "event": "retrieval_info",
+                    "data": RetrievalInfo(
+                        need_search=last_decision,
+                        info_packet=last_info,
+                    ).model_dump(),
+                }
+            except Exception:  # pragma: no cover – schema import should work
+                pass
 
         # ------------------------------------------------------------------
         # 4. Persist user + assistant messages (for retrieval and history)
